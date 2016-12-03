@@ -63,20 +63,20 @@ mkFile addLang name ext opts =
 absFile, absFileM, ocamllexFile, ocamllexFileM, ocamlyaccFile, ocamlyaccFileM,
   utilFile, templateFile, templateFileM, printerFile, printerFileM,
   tFile :: SharedOptions -> String
-absFile       = mkFile withLang "Abs" "ml"
+absFile       = mkFile withLang "Abs" "fs"
 absFileM      = mkMod  withLang "Abs"
-ocamllexFile      = mkFile withLang "Lex" "mll"
+ocamllexFile      = mkFile withLang "Lex" "fsl"
 ocamllexFileM     = mkMod  withLang "Lex"
-ocamlyaccFile     = mkFile withLang "Par" "mly"
+ocamlyaccFile     = mkFile withLang "Par" "fsy"
 ocamlyaccFileM    = mkMod  withLang "Par"
-templateFile  = mkFile withLang "Skel" "ml"
+templateFile  = mkFile withLang "Skel" "fs"
 templateFileM = mkMod  withLang "Skel"
-printerFile   = mkFile withLang "Print" "ml"
+printerFile   = mkFile withLang "Print" "fs"
 printerFileM  = mkMod  withLang "Print"
-showFile      = mkFile  withLang "Show" "ml"
+showFile      = mkFile  withLang "Show" "fs"
 showFileM     = mkMod  withLang "Show"
-tFile         = mkFile withLang "Test" "ml"
-utilFile       = mkFile noLang   "BNFC_Util" "ml"
+tFile         = mkFile withLang "Test" "fs"
+utilFile       = mkFile noLang   "BNFC_Util" "fs"
 
 makeFSharp :: SharedOptions -> CF -> MkFiles ()
 makeFSharp opts cf = do
