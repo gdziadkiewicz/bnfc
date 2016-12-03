@@ -1,6 +1,6 @@
 {-
     BNF Converter: Pretty-printer generator
-    Copyright (C) 2005  Author:  Kristofer Johannisson
+    Copyright (C) 2016  Author:  Grzegorz Dziadkiewicz
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,9 +17,9 @@
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 -}
 
--- based on BNFC Haskell backend
+-- based on BNFC OCaml backend
 
-module BNFC.Backend.OCaml.CFtoOCamlPrinter (cf2Printer) where
+module BNFC.Backend.FSharp.CFtoFSharpPrinter (cf2Printer) where
 
 import Data.Char(toLower)
 import Data.List (intersperse, sortBy)
@@ -27,7 +27,7 @@ import Data.Maybe (fromJust)
 
 import BNFC.CF
 import BNFC.Utils
-import BNFC.Backend.OCaml.OCamlUtil
+import BNFC.Backend.FSharp.FSharpUtil
 import BNFC.PrettyPrint
 import BNFC.Backend.Haskell.CFtoPrinter (compareRules)
 

@@ -1,6 +1,6 @@
 {-
-    BNF Converter: ocamllex Generator
-    Copyright (C) 2005  Author:  Kristofer Johannisson
+    BNF Converter: fslex Generator
+    Copyright (C) 2016  Author:  Grzegorz Dziadkiewicz
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -18,9 +18,9 @@
 -}
 
 
--- based on BNFC Haskell backend
+-- based on BNFC OCaml backend
 
-module BNFC.Backend.OCaml.CFtoOCamlLex (cf2ocamllex) where
+module BNFC.Backend.FSharp.CFtoFsLex (cf2ocamllex) where
 
 import Control.Arrow ((&&&))
 import Data.List
@@ -30,7 +30,7 @@ import qualified Text.PrettyPrint as PP
 
 import BNFC.CF
 import AbsBNF
-import BNFC.Backend.OCaml.CFtoOCamlYacc (terminal)
+import BNFC.Backend.FSharp.CFtoFsYacc (terminal)
 import BNFC.Utils ((+++), cstring, cchar)
 
 cf2ocamllex :: String -> String -> CF -> String

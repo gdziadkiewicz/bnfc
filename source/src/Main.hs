@@ -33,6 +33,7 @@ import BNFC.Backend.C
 import BNFC.Backend.CPP.NoSTL
 import BNFC.Backend.CPP.STL
 import BNFC.Backend.CSharp
+import BNFC.Backend.FSharp
 import BNFC.Backend.Haskell
 import BNFC.Backend.HaskellGADT
 import BNFC.Backend.HaskellProfile
@@ -77,6 +78,7 @@ maketarget t = case t of
     TargetCpp          -> makeCppStl
     TargetCppNoStl     -> makeCppNoStl
     TargetCSharp       -> makeCSharp
+    TargetFSharp       -> makeFSharp
     TargetHaskell      -> makeHaskell
     TargetHaskellGadt  -> makeHaskellGadt
     TargetLatex        -> makeLatex

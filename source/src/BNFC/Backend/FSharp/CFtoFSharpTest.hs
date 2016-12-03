@@ -1,6 +1,6 @@
 {-
-    BNF Converter: Generate main/test module for OCaml
-    Copyright (C) 2005  Author:  Kristofer Johannisson
+    BNF Converter: Generate main/test module for F#
+    Copyright (C) 2016  Author:  Grzegorz DZiadkiewicz
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,12 +17,12 @@
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 -}
 
-module BNFC.Backend.OCaml.CFtoOCamlTest where
+module BNFC.Backend.FSharp.CFtoFSharpTest where
 
 import Text.PrettyPrint
 
 import BNFC.CF
-import BNFC.Backend.OCaml.OCamlUtil
+import BNFC.Backend.FSharp.FSharpUtil
 
 -- | OCaml comment
 -- >>> comment "I'm a comment"

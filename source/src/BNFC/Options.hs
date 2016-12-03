@@ -28,6 +28,7 @@ data Mode
 data Target = TargetC | TargetCpp | TargetCppNoStl | TargetCSharp
             | TargetHaskell | TargetHaskellGadt | TargetLatex
             | TargetJava | TargetOCaml | TargetProfile | TargetPygments
+            | TargetFSharp
   deriving (Eq,Bounded, Enum,Ord)
 
 -- Create a list of all target using the enum and bounded classes
@@ -39,6 +40,7 @@ instance Show Target where
   show TargetCpp          = "C++"
   show TargetCppNoStl     = "C++ (without STL)"
   show TargetCSharp       = "C#"
+  show TargetFSharp       = "F#"
   show TargetHaskell      = "Haskell"
   show TargetHaskellGadt  = "Haskell (with GADT)"
   show TargetLatex        = "Latex"
@@ -139,6 +141,8 @@ targetOptions =
     "Output C++ code (without STL) for use with FLex and Bison"
   , Option "" ["csharp"]        (NoArg (\o -> o {target = TargetCSharp}))
     "Output C# code for use with GPLEX and GPPG"
+  , Option "" ["fsharp"]        (NoArg (\o -> o {target = TargetFSharp}))
+    "Output F# code for use with FsLex and FsYacc"
   , Option "" ["ocaml"]         (NoArg (\o -> o {target = TargetOCaml}))
     "Output OCaml code for use with ocamllex and ocamlyacc"
   , Option "" ["profile"]       (NoArg (\o -> o {target = TargetProfile}))
@@ -286,7 +290,7 @@ translateOldOptions = map translateOne
         translateOne "-cpp_no_stl"    = "--cpp-nostl"
         translateOne "-csharp"        = "--csharp"
         translateOne "-ocaml"         = "--ocaml"
-        translateOne "-fsharp"        = "fsharp"
+        translateOne "-fsharp"        = "--fsharp"
         translateOne "-haskell"       = "--haskell"
         translateOne "-prof"          = "--profile"
         translateOne "-gadt"          = "--haskell-gadt"

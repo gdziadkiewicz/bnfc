@@ -1,6 +1,6 @@
 {-
-    BNF Converter: OCaml Abstract Syntax Generator
-    Copyright (C) 2005  Author:  Kristofer Johannisson
+    BNF Converter: FSharp Abstract Syntax Generator
+    Copyright (C) 2016  Author:  Grzegorz Dziadkiewicz
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,16 +17,16 @@
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 -}
 
--- based on BNFC Haskell backend
+-- based on BNFC OCaml backend
 
-module BNFC.Backend.OCaml.CFtoOCamlAbs (cf2Abstract) where
+module BNFC.Backend.FSharp.CFtoFSharpAbs (cf2Abstract) where
 
 import Text.PrettyPrint
 
 import BNFC.CF
 import BNFC.Utils((+++))
 import Data.List(intersperse)
-import BNFC.Backend.OCaml.OCamlUtil
+import BNFC.Backend.FSharp.FSharpUtil
 
 -- to produce an OCaml module
 cf2Abstract :: String -> CF -> String

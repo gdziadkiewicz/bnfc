@@ -1,6 +1,6 @@
 {-
-    BNF Converter: OCaml backend utility module
-    Copyright (C) 2005  Author:  Kristofer Johannisson
+    BNF Converter: FSharp backend utility module
+    Copyright (C) 2016  Author:  Grzegorz Dziadkiewicz
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 -}
 
-module BNFC.Backend.OCaml.OCamlUtil where
+module BNFC.Backend.FSharp.FSharpUtil where
 
 import BNFC.CF
 import BNFC.Utils

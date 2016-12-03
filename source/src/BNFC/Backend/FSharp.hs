@@ -1,6 +1,6 @@
 {-
-    BNF Converter: OCaml main file
-    Copyright (C) 2005  Author:  Kristofer Johannisson
+    BNF Converter: FSharp main file
+    Copyright (C) 2016  Author:  Grzegorz Dziadkiewicz
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,22 +17,22 @@
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 -}
 
--- based on BNFC Haskell backend
+-- based on BNFC OCaml backend
 
 
-module BNFC.Backend.OCaml (makeOCaml) where
+module BNFC.Backend.FSharp (makeFSharp) where
 
 import System.FilePath (pathSeparator, (</>))
 
 import BNFC.Backend.Base hiding (Backend)
 import BNFC.Backend.Common.Makefile
-import BNFC.Backend.OCaml.CFtoOCamlAbs
-import BNFC.Backend.OCaml.CFtoOCamlLex
-import BNFC.Backend.OCaml.CFtoOCamlPrinter
-import BNFC.Backend.OCaml.CFtoOCamlShow
-import BNFC.Backend.OCaml.CFtoOCamlTemplate
-import BNFC.Backend.OCaml.CFtoOCamlTest
-import BNFC.Backend.OCaml.CFtoOCamlYacc
+import BNFC.Backend.FSharp.CFtoFSharpAbs
+import BNFC.Backend.FSharp.CFtoFsLex
+import BNFC.Backend.FSharp.CFtoFSharpPrinter
+import BNFC.Backend.FSharp.CFtoFSharpShow
+import BNFC.Backend.FSharp.CFtoFSharpTemplate
+import BNFC.Backend.FSharp.CFtoFSharpTest
+import BNFC.Backend.FSharp.CFtoFsYacc
 import BNFC.Backend.XML
 import BNFC.CF
 import BNFC.Options
@@ -78,8 +78,8 @@ showFileM     = mkMod  withLang "Show"
 tFile         = mkFile withLang "Test" "ml"
 utilFile       = mkFile noLang   "BNFC_Util" "ml"
 
-makeOCaml :: SharedOptions -> CF -> MkFiles ()
-makeOCaml opts cf = do
+makeFSharp :: SharedOptions -> CF -> MkFiles ()
+makeFSharp opts cf = do
   let absMod = absFileM opts
       lexMod = ocamllexFileM opts
       parMod = ocamlyaccFileM opts
@@ -153,4 +153,3 @@ utilM = unlines
      "(* this should really be in the parser, but ocamlyacc won't put it in the .mli *)",
      "exception Parse_error of Lexing.position * Lexing.position"
     ]
-

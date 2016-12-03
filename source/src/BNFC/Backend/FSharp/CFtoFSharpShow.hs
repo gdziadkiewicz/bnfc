@@ -1,6 +1,7 @@
 {-
+    TODO: Check if printing fot native fsharp objects like choice types or algebraic types can handle this
     BNF Converter: Non-pretty-printer generator (no "deriving Show" in OCaml...)
-    Copyright (C) 2005  Author:  Kristofer Johannisson
+    Copyright (C) 2016  Author:  Grzegorz Dziadkiewicz
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -21,7 +22,7 @@
 -- on camlp4. Here we generate our own "show module".
 
 
-module BNFC.Backend.OCaml.CFtoOCamlShow (cf2show) where
+module BNFC.Backend.FSharp.CFtoFSharpShow (cf2show) where
 
 import Data.Char(toLower)
 import Data.List (intersperse)
@@ -29,7 +30,7 @@ import Data.Maybe (fromJust)
 
 import BNFC.CF
 import BNFC.Utils
-import BNFC.Backend.OCaml.OCamlUtil
+import BNFC.Backend.FSharp.FSharpUtil
 
 cf2show :: String -> String -> CF -> String
 cf2show name absMod cf = unlines [

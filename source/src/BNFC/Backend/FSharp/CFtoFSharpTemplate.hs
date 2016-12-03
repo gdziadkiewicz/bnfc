@@ -1,6 +1,6 @@
 {-
     BNF Converter: Template Generator
-    Copyright (C) 2005  Author:  Kristofer Johannisson
+    Copyright (C) 2016  Author:  Grzegorz Dziadkiewicz
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -17,16 +17,16 @@
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 -}
 
--- based on BNFC Haskell backend
+-- based on BNFC OCaml backend
 
 
-module BNFC.Backend.OCaml.CFtoOCamlTemplate (
+module BNFC.Backend.FSharp.CFtoFSharpTemplate (
                     cf2Template
                     ) where
 
 import BNFC.CF
 import Data.Char
-import BNFC.Backend.OCaml.OCamlUtil
+import BNFC.Backend.FSharp.FSharpUtil
 
 
 type ModuleName = String
@@ -68,4 +68,3 @@ case_fun cat xs =
  unlines $
          ["trans" ++ show cat ++ " (x : " ++ fixType cat ++ ") : result = match x with",
           unlines $ insertBar $ map (\s -> s ++ " -> " ++ "failure x") xs]
-
