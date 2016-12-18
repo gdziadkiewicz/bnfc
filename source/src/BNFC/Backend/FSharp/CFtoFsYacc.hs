@@ -148,7 +148,7 @@ entryPointRules cf = unlines $ map mkRule (nub $ map normCat (allEntryPoints cf)
         mkRule :: Cat -> String
         mkRule s = unlines [
             epName s ++ " : " ++ nonterminal s ++ " TOK_EOF { $1 }",
-            "  | error { raise (BNFC_Util.Parse_error (Parsing.symbol_start_pos (), Parsing.symbol_end_pos ())) };"
+            "  | error { raise (BnfcUtil.ParseError (Parsing.symbol_start_pos (), Parsing.symbol_end_pos ())) };"
             ]
 
 rules :: CF -> String

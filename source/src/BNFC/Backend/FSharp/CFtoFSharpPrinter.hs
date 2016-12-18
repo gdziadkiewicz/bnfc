@@ -144,7 +144,7 @@ rules :: CF -> String
 rules cf = unlines $ mutualDefs $
   map (\(s,xs) -> case_fun s (map toArgs xs) ++ ifList cf s) $ cf2data cf
  where
-   reserved = "i":"e":reservedOCaml
+   reserved = "i":"e":reservedFSharp
    toArgs (cons,args) = ((cons, mkNames reserved LowerCase (map var args)), ruleOf cons)
    var (ListCat c)  = var c ++ "s"
    var (Cat "Ident")   = "id"
@@ -172,13 +172,13 @@ case_fun cat xs = unlines [
 --   cons cat = ["  | x::xs -> " ++ mkRhs ["x","xs"] its |
 --                             Rule f c its <- rulesOfCF cf, isConsFun f , normCatOfList c == cat]
 --   mkListRule [] = ""
---   mkListRule rs = unlines $ ("and prt" ++ fixTypeUpper cat ++ "ListBNFC" +++ "_ es : doc = match es with"):rs
+--   mkListRule rs = unlines $ ("and prt" ++ fixType cat ++ "ListBNFC" +++ "_ es : doc = match es with"):rs
 
 ifList :: CF -> Cat -> String
 ifList cf cat = case cases of
     []        -> ""
     first:rest -> render $ vcat
-        [ "and prt" <> text (fixTypeUpper cat)  <> "ListBNFC i es : doc = match (i, es) with"
+        [ "and prt" <> text (fixType cat)  <> "ListBNFC i es : doc = match (i, es) with"
         , nest 4 first
         , nest 2 $ vcat (map ("|" <+>) rest)
         ]
@@ -222,5 +222,5 @@ mkRhs args its =
 
 prtFun :: Cat -> String
 prtFun (ListCat c) = prtFun c ++ "ListBNFC"
-prtFun c = "prt" ++ fixTypeUpper (normCat c)
+prtFun c = "prt" ++ fixType (normCat c)
 

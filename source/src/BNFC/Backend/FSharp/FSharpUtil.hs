@@ -21,49 +21,47 @@ module BNFC.Backend.FSharp.FSharpUtil where
 
 import BNFC.CF
 import BNFC.Utils
-import Data.Char (toLower, toUpper)
+import Data.List(intercalate)
 
--- Translate Haskell types to OCaml types
--- Note: OCaml (data-)types start with lowercase letter
+-- Translate Haskell types to F# types
 fixType :: Cat -> String
 fixType (ListCat c) = fixType c +++ "list"
 fixType (TokenCat "Integer") = "int"
 fixType (TokenCat "Double") = "float"
-fixType cat = let c:cs = show cat in
-                let ls = toLower c : cs in
-                  if (elem ls reservedOCaml) then (ls ++ "T") else ls
+fixType cat = fixKeywordUse $ show cat
 
--- as fixType, but leave first character in upper case
-fixTypeUpper :: Cat -> String
-fixTypeUpper c = case fixType c of
-    [] -> []
-    c:cs -> toUpper c : cs
+fixKeywordUse:: String -> String
+fixKeywordUse s = if s `elem` reservedFSharp then s ++ "T" else s
 
-
-reservedOCaml :: [String]
-reservedOCaml = [
-    "and","as","assert","asr","begin","class",
-    "constraint","do","done","downto","else","end",
-    "exception","external","false","for","fun","function",
-    "functor","if","in","include","inherit","initializer",
-    "land","lazy","let","list","lor","lsl","lsr",
-    "lxor","match","method","mod","module","mutable",
-    "new","object","of","open","or","private",
-    "rec","sig","struct","then","to","true",
-    "try","type","val","virtual","when","while","with"]
+reservedFSharp :: [String]
+reservedFSharp = [
+    "abstract","and","as","assert","base","begin","class","default","delegate","do","done",
+    "downcast","downto","elif","else","end","exception","extern","false","finally","for",
+    "fun","function","global","if","in","inherit","inline","interface","internal","lazy","let",
+    "match","member","module","mutable","namespace","new","null","of","open","or",
+    "override","private","public","rec","return","sig","static","struct","then","to",
+    "true","try","type","upcast","use","val","void","when","while","with","yield",
+    --reserved
+    "atomic","break","checked","component","const","constraint","constructor",
+    "continue","eager","fixed","fori","functor","include",
+    "measure","method","mixin","object","parallel","params","process","protected","pure",
+    "recursive","sealed","tailcall","trait","virtual","volatile"
+    ]
 
 mkTuple :: [String] -> String
 mkTuple [] = ""
 mkTuple [x] = x
-mkTuple (x:xs) = "(" ++ foldl (\acc e -> acc ++ "," +++ e) x xs ++ ")"
+mkTuple xs = "(" ++ intercalate ", " xs ++ ")"
 
 insertBar :: [String] -> [String]
-insertBar [] = []
-insertBar [x]    = ["    " ++ x]
-insertBar (x:xs) = ("    " ++ x ) :  map ("  | " ++) xs
+insertBar = map ("| " ++)
+
+fsharpTab:: String
+fsharpTab = "    "
+indent :: Int -> String -> String
+indent n s =
+    concat (replicate n fsharpTab) ++ s
 
 mutualDefs :: [String] -> [String]
-mutualDefs defs = case defs of
-     []   -> []
-     [d]  -> ["let rec" +++ d]
-     d:ds -> ("let rec" +++ d) : map ("and" +++) ds
+mutualDefs [] = []
+mutualDefs (d:ds) = ("let rec" +++ d) : map ("and" +++) ds
