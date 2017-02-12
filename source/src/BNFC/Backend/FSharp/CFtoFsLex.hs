@@ -216,7 +216,7 @@ rules cf = mkRule "token" $
     -- spaces
     , ( "[' ' '\\t']", "token lexbuf")
     -- new lines
-    , ( "'\\n'", "incr_lineno lexbuf; token lexbuf" )
+    , ( "'\\n' | '\\r\\n'", "incr_lineno lexbuf; token lexbuf" )
     -- end of file
     , ( "eof", "TOK_EOF" )
     ]
