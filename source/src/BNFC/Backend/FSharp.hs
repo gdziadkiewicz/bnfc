@@ -86,7 +86,7 @@ makeFSharp opts cf = do
       tFileMod = tFileM opts
   do
     mkfile (absFile opts) $ cf2Abstract absMod cf
-    mkfile (fslexFile opts) $ cf2ocamllex lexMod parMod cf
+    mkfile (fslexFile opts) $ cf2fslex lexMod parMod cf
     mkfile (fsyaccFile opts) $
                  cf2ocamlyacc parMod absMod lexMod  cf
     mkfile (templateFile opts) $ cf2Template (templateFileM opts) absMod cf
