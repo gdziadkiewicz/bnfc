@@ -28,6 +28,7 @@ fixType :: Cat -> String
 fixType (ListCat c) = fixType c +++ "list"
 fixType (TokenCat "Integer") = "int"
 fixType (TokenCat "Double") = "float"
+fixType (TokenCat "String") = "string"
 fixType cat = fixKeywordUse $ show cat
 
 fixKeywordUse:: String -> String
