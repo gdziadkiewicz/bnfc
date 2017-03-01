@@ -111,16 +111,16 @@ definitions cf = concat [
 
 cMacros :: [String]
 cMacros = [
-  "let l = ['a'-'z' 'A'-'Z' '\192'-'\214' '\216'-'\246' '\248'-'\255'] (*  isolatin1 letter FIXME *)",
-  "let c = ['A'-'Z' '\192'-'\214' '\216'-'\221']  (*  capital isolatin1 letter FIXME *)",
-  "let s = ['a'-'z' '\222'-'\246' '\248'-'\255'] (*  small isolatin1 letter FIXME *)",
+  "let l = ['a'-'z' 'A'-'Z' '\\192'-'\\214' '\\216'-'\\246' '\\248'-'\\255'] (*  isolatin1 letter FIXME *)",
+  "let c = ['A'-'Z' '\\192'-'\\214' '\\216'-'\\221']  (*  capital isolatin1 letter FIXME *)",
+  "let s = ['a'-'z' '\\222'-'\\246' '\\248'-'\\255'] (*  small isolatin1 letter FIXME *)",
   "let d = ['0'-'9']                (*  digit *)",
-  "let i = l | d | ['_' '\'']          (*  identifier character *)",
-  "let noStar = ['\000' - '\041' '\043'-'\255']",
-  "let noSlash = ['\000'- '\046' '\048'-'\255']",
-  "let u = ['\000'-'\255']           (* universal: any character *)",
-  "let u1 = ['\000'-'\009' '\011'-'\033' '\035'-'\091' '\093'-'\255']",
-  "let u2 = ['\000'-'\038' '\040'-'\091' '\093'-'\255']"
+  "let i = l | d | ['_' '\\'']          (*  identifier character *)",
+  "let noStar = ['\\000' - '\\041' '\\043'-'\\255']",
+  "let noSlash = ['\\000'- '\\046' '\\048'-'\\255']",
+  "let u = ['\\000'-'\\255']           (* universal: any character *)",
+  "let u1 = ['\\000'-'\\009' '\\011'-'\\033' '\\035'-'\\091' '\\093'-'\\255']",
+  "let u2 = ['\\000'-'\\038' '\\040'-'\\091' '\\093'-'\\255']"
   ]
 
 rMacros :: CF -> [String]
