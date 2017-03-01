@@ -172,7 +172,7 @@ mkRule entrypoint (r1:rn) = vcat
 -- >>> mkRegexSingleLineComment "\""
 -- "\"" (_ # '\n')*
 mkRegexSingleLineComment :: String -> Doc
-mkRegexSingleLineComment s = cstring s <+> "(_ # '\\n')*"
+mkRegexSingleLineComment s = cstring s <+> "\"#\" ([^'\\n'])*"
 
 -- | Create regex for multiline comments
 -- >>> mkRegexMultilineComment "<!--" "-->"
@@ -197,6 +197,7 @@ mkRegexMultilineComment b e =
 -- | Uses the function from above to make a lexer rule from the CF grammar
 rules :: CF -> Doc
 rules cf = mkRule "token" $
+    --TODO: Fix comments -> # removal
     -- comments
     [ (mkRegexSingleLineComment s, "token lexbuf") | s <- singleLineC ]
     ++
@@ -204,7 +205,12 @@ rules cf = mkRule "token" $
     ++
     -- reserved keywords
     [ ( "rsyms"
-      , "let id = lexeme lexbuf in try Hashtbl.find symbol_table id with Not_found -> failwith (\"internal lexer error: reserved symbol \" ^ id ^ \" not found in hashtable\")" )
+      , vcat
+        [
+          "let id = lexeme lexbuf",
+          "try Map.find id symbol_table with",
+          nest 2 ":? KeyNotFoundException -> failwith (\"internal lexer error: reserved symbol \" + id + \" not found in hashtable\")"
+        ] )
       | not (null (cfgSymbols cf))]
     ++
     -- user tokens
@@ -214,20 +220,20 @@ rules cf = mkRule "token" $
     [ ( "l i*", tokenAction "Ident" ) ]
     ++
     -- integers
-    [ ( "d+", "let i = lexeme lexbuf in TOK_Integer (int_of_string i)" )
+    [ ( "d+", "let i = lexeme lexbuf in TOK_Integer (int i)" )
     -- doubles
     , ( "d+ '.' d+ ('e' ('-')? d+)?"
-      , "let f = lexeme lexbuf in TOK_Double (float_of_string f)" )
+      , "let f = lexeme lexbuf in TOK_Double (float f)" )
     -- strings
-    , ( "'\\\"' ((u # ['\\\"' '\\\\' '\\n']) | ('\\\\' ('\\\"' | '\\\\' | '\\\'' | 'n' | 't')))* '\\\"'"
+    , ( "'\\\"' (u1 | ('\\\\' (\'\\\"\' | \'\\\\\' | \'\\\'\' | \'n\' | \'t\')))* \'\\\"\'"
       , "let s = lexeme lexbuf in TOK_String (unescapeInitTail s)" )
     -- chars
-    , ( "'\\'' ((u # ['\\\'' '\\\\']) | ('\\\\' ('\\\\' | '\\\'' | 'n' | 't'))) '\\\''"
+    , ( "\'\\\'\' (u2 | (\'\\\\\' (\'\\\\\' | \'\\'\' | \'n\' | \'t\'))) \'\\\'\'"
       , "let s = lexeme lexbuf in TOK_Char s.[1]")
     -- spaces
     , ( "[' ' '\\t']", "token lexbuf")
     -- new lines
-    , ( "'\\n' | '\\r\\n'", "incr_lineno lexbuf; token lexbuf" )
+    , ( "'\\n' | \"\\r\\n\"", "incr_lineno lexbuf; token lexbuf" )
     -- end of file
     , ( "eof", "TOK_EOF" )
     ]
@@ -235,7 +241,12 @@ rules cf = mkRule "token" $
     (multilineC, singleLineC) = comments cf
     tokenAction t = case reservedWords cf of
         [] -> "let l = lexeme lexbuf in TOK_" <> t <>" l"
-        _  -> "let l = lexeme lexbuf in try Hashtbl.find resword_table l with Not_found -> TOK_" <> t <+> "l"
+        _  -> vcat
+                [
+                  "let id = lexeme lexbuf",
+                  "try Map.find id resword_table with",
+                  nest 2 ":? KeyNotFoundException -> TOK_" <> t <+> "id"
+                ]
 
 -------------------------------------------------------------------
 -- Modified from the inlined version of @RegToAlex@.
