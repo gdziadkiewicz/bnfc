@@ -51,10 +51,10 @@ prRule (fun,cats) = fun +++ "of" +++ render (mkTupleType cats)
 
 -- | Creates an OCaml type tuple by intercalating * between type names
 -- >>> mkTupleType [Cat "A"]
--- a
+-- A
 --
 -- >>> mkTupleType [Cat "A", Cat "Abc", Cat "S"]
--- a * abc * s
+-- A * Abc * S
 mkTupleType :: [Cat] -> Doc
 mkTupleType = hsep . intersperse (char '*') . map (text . fixType)
 

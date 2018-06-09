@@ -87,8 +87,7 @@ makeFSharp opts cf = do
   do
     mkfile (absFile opts) $ cf2Abstract absMod cf
     mkfile (fslexFile opts) $ cf2fslex lexMod parMod cf
-    mkfile (fsyaccFile opts) $
-                 cf2ocamlyacc parMod absMod lexMod  cf
+    mkfile (fsyaccFile opts) $ cf2fsyacc parMod absMod lexMod  cf
     mkfile (templateFile opts) $ cf2Template (templateFileM opts) absMod cf
     mkfile (printerFile opts)  $ cf2Printer prMod absMod cf
     mkfile (showFile opts)  $ cf2show showMod absMod cf
@@ -149,5 +148,5 @@ utilM moduleName = unlines
      "module" +++ moduleName,
      "open Microsoft.FSharp.Text.Lexing",
      "",
-     "exception Parse_error of Position * Position "
+     "exception ParseError of Position * Position "
     ]
