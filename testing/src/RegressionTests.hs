@@ -12,7 +12,8 @@ import TestUtils
 import Shelly
 import Prelude hiding (all)
 
-all = makeTestSuite "Regression tests"
+all = makeTestSuite "Regression tests" $
+    [ issue222 ] ++
     [ issue30, issue31
     , issue60
     , issue108, issue110, issue111, issue114, issue113
@@ -21,8 +22,33 @@ all = makeTestSuite "Regression tests"
     , issue170a, issue170b, issue172
     ]
 
+-- | A full regression test for the Haskell backend
+haskellRegressionTest
+  :: String -- ^ Pretty name of test.
+  -> String -- ^ File basename: @%@ in @regression-tests/%.{cf|in|out}@
+  -> String -- ^ Module name derived from file base name.
+  -> Test
+haskellRegressionTest title base mod =
+  makeShellyTest title $ do
+    -- Load input and expected output
+    input    <- readfile $ dir </> base <.> "in"
+    expected <- readfile $ dir </> base <.> "out"
+    -- Create and run the parser in a temporary directory
+    withTmpDir $ \ tmp -> do
+      cp (dir </> cfF) tmp
+      cd tmp
+      cmd "bnfc" "--haskell" "-m" cfF
+      cmd "make"
+      setStdin input
+      output <- cmd =<< canonicalize ("." </> ("Test" ++ mod))
+      -- Compare output with the expected one
+      assertEqual expected output
+  where
+    dir = "regression-tests"
+    cfF  = base <.> "cf"
+
 issue30 :: Test
-issue30 = makeShellyTest "#30 With -d option XML module is not generated inside the directorty" $
+issue30 = makeShellyTest "#30 With -d option XML module is not generated inside the directory" $
     withTmpDir $ \tmp -> do
         cd tmp
         writefile "Test.cf" $ T.unlines
@@ -34,14 +60,14 @@ issue30 = makeShellyTest "#30 With -d option XML module is not generated inside 
 
 -- | Issue #31
 issue31 :: Test
-issue31 = makeShellyTest "#31 Problem with multiples `rules` declaration with a common prefix" $
+issue31 = makeShellyTest "#31 Problem with multiple `rules` declaration with a common prefix" $
     withTmpDir $ \tmp -> do
         cp "regression-tests/31_multirules.cf" (tmp </> "grammar.cf")
         cd tmp
         cmd "bnfc" "--java" "grammar.cf"
 
 issue60 :: Test
-issue60 = makeShellyTest "#60 Compilation error in Java when a production uses more than one user-defined tokens" $
+issue60 = makeShellyTest "#60 Compilation error in Java when a production uses more than one user-defined token" $
     withTmpDir $ \tmp -> do
         cd tmp
         writefile "multiple_token.cf" $ T.unlines
@@ -85,18 +111,7 @@ issue111 =  makeShellyTest "#111 Custom tokens in OCaml" $
         liftIO $ print out
 
 issue114 :: Test
-issue114 = makeShellyTest "#114 List category as entry point" $
-    withTmpDir $ \tmp -> do
-        cp "regression-tests/114_listentry.cf" tmp
-        cp "regression-tests/114_listentry.in" tmp
-        input <- readfile "regression-tests/114_listentry.in"
-        expected <- readfile "regression-tests/114_listentry.out"
-        cd tmp
-        cmd "bnfc" "--haskell" "-m" "114_listentry.cf"
-        cmd "make"
-        setStdin input
-        output <- cmd =<< canonicalize "./TestListentry"
-        assertEqual expected output
+issue114 = haskellRegressionTest "#114 List category as entry point" "114_listentry" "Listentry"
 
 issue113 :: Test
 issue113 = makeShellyTest "#113 BNFC to Java creates non-compilable code when using user-defined tokens in grammar" $
@@ -148,7 +163,6 @@ issue151 = makeShellyTest "#151 Shouldn't print all categories in error message"
                   , "    Foo. Bar ::= Baz", "" ]
           assertEqual expectedErr err
 
--- |Issue #172
 issue159 :: Test
 issue159 = makeShellyTest "#159 String rendering in Java does not work" $
     withTmpDir $ \tmp -> do
@@ -184,7 +198,7 @@ issue170b = makeShellyTest "#170 Module Xml cannot be compiled with GADT backend
         cmd "make"
 
 
--- |Issue #172
+-- | Issue #172
 issue172 :: Test
 issue172 = makeShellyTest "#172 Prefixes not generated correctly in CPP" $
     withTmpDir $ \tmp -> do
@@ -194,3 +208,10 @@ issue172 = makeShellyTest "#172 Prefixes not generated correctly in CPP" $
             , "End.   S ::= ;" ]
         cmd "bnfc" "-m" "--cpp" "-p" "Haskell" "Test.cf"
         cmd "make"
+
+issue222 :: Test
+issue222 =
+  haskellRegressionTest
+    "#222 Haskell: printing of Integer lists with separator"
+    "222_IntegerList"
+    "IntegerList"

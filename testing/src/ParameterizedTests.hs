@@ -7,13 +7,24 @@
  - -}
 module ParameterizedTests where
 
-import Control.Monad (forM_, liftM)
+import Control.Monad (forM_)
+import Data.Functor
 import Data.Monoid ((<>))
 import Data.Text (Text)
 import Filesystem.Path (filename, dropExtension, basename, replaceExtension)
 import Filesystem.Path.CurrentOS (encodeString)
 import Prelude hiding (FilePath)
 import Shelly
+  ( FilePath, Sh, (</>)
+  , absPath, appendfile
+  , canonicalize, cd, cp, cmd
+  , echo, errExit
+  , lastExitCode, ls
+  , readfile, run_
+  , setStdin
+  , test_f, toTextArg
+  , when, withTmpDir, writefile
+  )
 
 import TestUtils
 import TestData
@@ -38,7 +49,7 @@ exitCodeTest params =
     makeShellyTest "Test program exits with code 1 on failure" $
         withTmpDir $ \tmp -> do
             cd tmp
-            writefile "Abra.cf" "F. C ::= \"abracadabra\";"
+            writefile "Abra.cf" ";; F. C ::= \"abracadabra\" ;"  -- leading semicolon for #215
             tpBnfc params "Abra.cf"
             tpBuild params
             setStdin "bad"
@@ -102,7 +113,7 @@ testCases params =
             tpBnfc params (dir </> "test.cf")
             echo "§ Build"
             tpBuild params
-            good <- liftM (filter (matchFilePath "good[0-9]*.in$")) (ls dir)
+            good <- filter (matchFilePath "good[0-9]*.in$") <$> ls dir
             forM_ good $ \f -> do
                 output <- tpRunTestProg params "test" [f]
                 goldExists <- test_f (replaceExtension f "out")
@@ -111,7 +122,7 @@ testCases params =
                     let (_, goldLT) = parseOutput gold
                         (_, actualLT) = parseOutput output
                     assertEqual goldLT actualLT
-            bad <- liftM (filter (matchFilePath "bad[0-9]*.in$")) (ls dir)
+            bad <- filter (matchFilePath "bad[0-9]*.in$") <$> ls dir
             forM_ bad $ \f -> do
                 errExit False $ tpRunTestProg params "test" [f]
                 lastExitCode >>= assertEqual 1
@@ -165,10 +176,14 @@ parameters =
   -- Java
   , javaParams { tpName = "Java"
                , tpBnfcOptions = ["--java", "-m"] }
+  , javaParams { tpName = "Java (with line numbers)"
+               , tpBnfcOptions = ["--java", "-m", "-l"] }
   , javaParams { tpName = "Java (with namespace)"
                , tpBnfcOptions = ["--java", "-p", "my.stuff", "-m"] }
   , javaParams { tpName = "Java (with jflex)"
                , tpBnfcOptions = ["--java", "--jflex", "-m"] }
+  , javaParams { tpName = "Java (with jflex and line numbers)"
+               , tpBnfcOptions = ["--java", "--jflex", "-m", "-l"] }
   , javaParams { tpName = "Java (with antlr)"
                , tpBnfcOptions = ["--java", "--antlr", "-m"] }
   ]
@@ -181,24 +196,32 @@ parameters =
             bin <- canonicalize ("." </> ("Test" <> lang))
             cmd bin args
         }
-    cBase = base { tpBuild = cmd "make" >> cmd "make" "Skeleton.o" }
+    cBase = base
+        { tpBuild = do
+            cmd "make"
+            cmd "make" "Skeleton.o"
+        }
     hsParams = base
-        { tpBuild = do cmd "hlint" "-i" "Redundant bracket" "-i" "Use camelCase" "."
-                       cmd "make"
-                       cmd "ghc" =<< findFileRegex "Skel.*\\.hs$"
+        { tpBuild = do
+            cmd "hlint" "-i" "Redundant bracket" "-i" "Use camelCase" "-i" "Use newtype instead of data" "-i" "Use fmap" "."
+            cmd "make"
+            cmd "ghc" =<< findFileRegex "Skel.*\\.hs$"
         , tpRunTestProg = \_ args -> do
             bin <- findFileRegex "Test\\w*$"
             cmd bin args
         }
     javaParams = base
-        { tpBuild =
-            do { cmd "make" ; cmd "javac" =<< findFile "VisitSkel.java" }
+        { tpBuild = do
+            cmd "make"
+            cmd "javac" =<< findFile "VisitSkel.java"
         , tpRunTestProg = \_ args -> do
-            class_ <- liftM dropExtension (findFile "Test.class")
+            class_ <- dropExtension <$> findFile "Test.class"
             cmd "java" class_ args
         }
 
--- | Helper function that runs bnfc with the context's options
+-- | Helper function that runs bnfc with the context's options.
+--   It will simply invoke the bnfc that is in the system's path.
+
 tpBnfc :: TestParameters -> FilePath -> Sh ()
 tpBnfc params grammar = run_ "bnfc" args
   where args = tpBnfcOptions params ++ [toTextArg grammar]

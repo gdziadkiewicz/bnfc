@@ -1,10 +1,16 @@
 import Test.DocTest
+
 main = doctest
-    [ "-isrc"
+    [ "-icompat"
+    , "-isrc"
     , "-idist/build/autogen/"
     , "-idist/build/bnfc/bnfc-tmp"
-    , "-XOverloadedStrings"
+    , "-XLambdaCase"
     , "-XFlexibleContexts"
+    , "-XOverloadedStrings"
     , "-XRecordWildCards"
+    , "-XScopedTypeVariables"
+    , "-XTupleSections"
     , "src/PrintBNF.hs"
-    , "src/Main.hs" ]
+    , "src/Main.hs"
+    ]

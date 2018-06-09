@@ -103,7 +103,6 @@ header name cf = unlines
     , "#include <stdlib.h>"
     , "#include <stdio.h>"
     , "#include <string.h>"
-    , "#include <iostream>"
     , "#include \"Absyn.H\""
     , "int yyparse(void);"
     , "int yylex(void);"
@@ -131,7 +130,7 @@ definedRules cf = unlines [ rule f xs e | FunDef f xs e <- cfgPragmas cf]
   where
     ctx = buildContext cf
 
-    list = LC (const "[]") (\t -> "List" ++ unBase t)
+    list = LC (const "[]") (\ t -> "List" ++ unBase t)
       where
         unBase (ListT t) = unBase t
         unBase (BaseT x) = show$normCat$strToCat x

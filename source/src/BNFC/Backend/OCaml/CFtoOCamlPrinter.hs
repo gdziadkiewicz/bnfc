@@ -1,3 +1,5 @@
+{-# LANGUAGE NoImplicitPrelude #-}
+
 {-
     BNF Converter: Pretty-printer generator
     Copyright (C) 2005  Author:  Kristofer Johannisson
@@ -20,6 +22,8 @@
 -- based on BNFC Haskell backend
 
 module BNFC.Backend.OCaml.CFtoOCamlPrinter (cf2Printer) where
+
+import Prelude'
 
 import Data.Char(toLower)
 import Data.List (intersperse, sortBy)
@@ -188,18 +192,25 @@ ifList cf cat = case cases of
 
 
 -- | Pattern match on the list constructor and the coercion level
+--
 -- >>> mkPrtListCase (Rule "[]" (ListCat (Cat "Foo")) [])
 -- (_,[]) -> (concatD [])
+--
 -- >>> mkPrtListCase (Rule "(:[])" (ListCat (Cat "Foo")) [Left (Cat "Foo")])
 -- (_,[x]) -> (concatD [prtFoo 0 x])
+--
 -- >>> mkPrtListCase (Rule "(:)" (ListCat (Cat "Foo")) [Left (Cat "Foo"), Left (ListCat (Cat "Foo"))])
 -- (_,x::xs) -> (concatD [prtFoo 0 x ; prtFooListBNFC 0 xs])
+--
 -- >>> mkPrtListCase (Rule "[]" (ListCat (CoercCat "Foo" 2)) [])
 -- (2,[]) -> (concatD [])
+--
 -- >>> mkPrtListCase (Rule "(:[])" (ListCat (CoercCat "Foo" 2)) [Left (CoercCat "Foo" 2)])
 -- (2,[x]) -> (concatD [prtFoo 2 x])
+--
 -- >>> mkPrtListCase (Rule "(:)" (ListCat (CoercCat "Foo" 2)) [Left (CoercCat "Foo" 2), Left (ListCat (CoercCat "Foo" 2))])
 -- (2,x::xs) -> (concatD [prtFoo 2 x ; prtFooListBNFC 2 xs])
+--
 mkPrtListCase :: Rule -> Doc
 mkPrtListCase (Rule f (ListCat c) rhs)
   | isNilFun f  = parens (precPattern <> "," <> "[]") <+> "->" <+> body
@@ -223,4 +234,3 @@ mkRhs args its =
 prtFun :: Cat -> String
 prtFun (ListCat c) = prtFun c ++ "ListBNFC"
 prtFun c = "prt" ++ fixTypeUpper (normCat c)
-
