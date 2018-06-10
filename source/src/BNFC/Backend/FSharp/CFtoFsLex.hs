@@ -168,18 +168,18 @@ mkRule entrypoint (r1:rn) = vcat
 
 -- | Create regex for single line comments
 -- >>> mkRegexSingleLineComment "--"
--- "--" (_ # '\n')*
+-- "--" [^'\n']*
 -- >>> mkRegexSingleLineComment "\""
--- "\"" (_ # '\n')*
+-- "\"" [^'\n']*
 mkRegexSingleLineComment :: String -> Doc
 mkRegexSingleLineComment s = cstring s <+> "[^'\\n']*"
 
 -- | Create regex for multiline comments
 -- >>> mkRegexMultilineComment "<!--" "-->"
--- "<!--" ((u # ['-']) | '-' (u # ['-']) | "--" (u # ['>']))* '-'* "-->"
+-- "<!--" (([^'-']) | '-' ([^'-']) | "--" ([^'>']))* '-'* "-->"
 --
 -- >>> mkRegexMultilineComment "\"'" "'\""
--- "\"'" ((u # ['\'']) | '\'' (u # ['"']))* '\''* "'\""
+-- "\"'" (([^'\'']) | '\'' ([^'"']))* '\''* "'\""
 mkRegexMultilineComment :: String -> String -> Doc
 mkRegexMultilineComment b e =
   lit b
@@ -192,7 +192,7 @@ mkRegexMultilineComment b e =
     lit [c] = cchar c
     lit s = cstring s
     prefix = map (init &&& last) (drop 1 (inits e))
-    subregexs = [ lit ss <+> parens (brackets (char '^' <+> lit [s])) | (ss,s) <- prefix]
+    subregexs = [ lit ss <+> parens (brackets (char '^' <> lit [s])) | (ss,s) <- prefix]
 
 -- | Uses the function from above to make a lexer rule from the CF grammar
 rules :: CF -> Doc
