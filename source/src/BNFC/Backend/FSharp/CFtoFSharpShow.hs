@@ -28,7 +28,7 @@ import Data.Maybe (fromJust)
 
 import BNFC.CF
 import BNFC.Utils
-import BNFC.Backend.FSharp.FSharpUtil
+import BNFC.Backend.FSharp.FSharpUtilities
 
 cf2show :: String -> String -> CF -> String
 cf2show name absMod cf = unlines [

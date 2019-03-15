@@ -1,6 +1,6 @@
 {-
     BNF Converter: FSharp main file
-    Copyright (C) 2016  Author:  Grzegorz Dziadkiewicz
+    Copyright (C) 2016  Author: Grzegorz Dziadkiewicz
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -21,11 +21,12 @@
 
 
 module BNFC.Backend.FSharp (makeFSharp) where
-
+import Control.Monad(when)
 import System.FilePath (pathSeparator, (</>))
 
 import BNFC.Backend.Base hiding (Backend)
-import BNFC.Backend.Common.Makefile
+import BNFC.Backend.Common.Makefile(mkMakefile)
+import BNFC.Backend.FSharp.FsprojFile(fsprojFile)
 import BNFC.Backend.FSharp.CFtoFSharpAbs
 import BNFC.Backend.FSharp.CFtoFsLex
 import BNFC.Backend.FSharp.CFtoFSharpPrinter
@@ -33,6 +34,8 @@ import BNFC.Backend.FSharp.CFtoFSharpShow
 import BNFC.Backend.FSharp.CFtoFSharpTemplate
 import BNFC.Backend.FSharp.CFtoFSharpTest
 import BNFC.Backend.FSharp.CFtoFsYacc
+import BNFC.Backend.FSharp.FsMakeFile(makefile)
+import BNFC.Backend.FSharp.FsParseError(fsharpParseErrorFile)
 import BNFC.Backend.XML
 import BNFC.CF
 import BNFC.Options
@@ -52,29 +55,30 @@ mkFile :: (SharedOptions -> String -> String) -> String -> String -> SharedOptio
 mkFile addLang name ext opts =
     pref ++ if inDir opts
        then lang opts </> name ++ ext'
-       else addLang opts name ++ if null ext then "" else ext'
+       else addLang opts name ++  ext'
     where pref = maybe "" (\p->pkgToDir p </> "") (inPackage opts)
-          ext' = if null ext then "" else "." ++ ext
+          ext' = if null ext then "" else  if null name then ext else "." ++ ext
 
 absFile, absFileM, fslexFile, fslexFileM, fsyaccFile, fsyaccFileM,
-  utilFile, templateFile, templateFileM, printerFile, printerFileM,
-  tFile :: SharedOptions -> String
-absFile       = mkFile withLang "Abs" "fs"
-absFileM      = mkMod  withLang "Abs"
-fslexFile     = mkFile withLang "Lex" "fsl"
-fslexFileM    = mkMod  withLang "Lex"
-fsyaccFile    = mkFile withLang "Par" "fsy"
-fsyaccFileM   = mkMod  withLang "Par"
-templateFile  = mkFile withLang "Skel" "fs"
-templateFileM = mkMod  withLang "Skel"
-printerFile   = mkFile withLang "Print" "fs"
-printerFileM  = mkMod  withLang "Print"
-showFile      = mkFile withLang "Show" "fs"
-showFileM     = mkMod  withLang "Show"
-tFileM         = mkMod withLang "Test"
-tFile         = mkFile withLang "Test" "fs"
-utilFileM     = mkMod  withLang "BnfcUtil" 
-utilFile      = mkFile withLang "BnfcUtil" "fs"
+  parseErrorFile, parseErrorFileM, templateFile, templateFileM,
+  printerFile, printerFileM, projFile, tFile :: SharedOptions -> String
+absFile         = mkFile withLang "Abs" "fs"
+absFileM        = mkMod  withLang "Abs"
+fslexFile       = mkFile withLang "Lex" "fsl"
+fslexFileM      = mkMod  withLang "Lex"
+fsyaccFile      = mkFile withLang "Par" "fsy"
+fsyaccFileM     = mkMod  withLang "Par"
+templateFile    = mkFile withLang "Skel" "fs"
+templateFileM   = mkMod  withLang "Skel"
+printerFile     = mkFile withLang "Print" "fs"
+printerFileM    = mkMod  withLang "Print"
+showFile        = mkFile withLang "Show" "fs"
+showFileM       = mkMod  withLang "Show"
+tFileM          = mkMod  withLang "Test"
+tFile           = mkFile withLang "Test" "fs"
+parseErrorFileM = mkMod  withLang "BnfcUtil" 
+parseErrorFile  = mkFile withLang "ParseError" "fs"
+projFile        = mkFile withLang "" "fsproj"
 
 makeFSharp :: SharedOptions -> CF -> MkFiles ()
 makeFSharp opts cf = do
@@ -84,6 +88,8 @@ makeFSharp opts cf = do
       prMod  = printerFileM opts
       showMod = showFileM opts
       tFileMod = tFileM opts
+      dir = let d = codeDir opts in if null d then "." else d ++ [pathSeparator]
+      files = [(absFile opts), (templateFile opts), (printerFile opts), (showFile opts), (parseErrorFile opts)]
   do
     mkfile (absFile opts) $ cf2Abstract absMod cf
     mkfile (fslexFile opts) $ cf2fslex lexMod parMod cf
@@ -92,8 +98,9 @@ makeFSharp opts cf = do
     mkfile (printerFile opts)  $ cf2Printer prMod absMod cf
     mkfile (showFile opts)  $ cf2show showMod absMod cf
     mkfile (tFile opts) $ fsharpTestfile absMod lexMod parMod prMod showMod tFileMod cf
-    mkfile (utilFile opts) $ utilM (utilFileM opts)
-    mkMakefile opts $ makefile opts
+    mkfile (parseErrorFile opts) $ fsharpParseErrorFile (parseErrorFileM opts)
+    when (visualStudio opts) $ mkfile (projFile opts) $ fsprojFile "Pies" files (fslexFile opts) (fsyaccFile opts) (tFile opts)
+    mkMakefile opts $ makefile dir (projFile opts)
     case xml opts of
       2 -> makeXML opts True cf
       1 -> makeXML opts False cf
@@ -107,46 +114,3 @@ codeDir opts = let pref = maybe "" pkgToDir (inPackage opts)
                    dir = if inDir opts then lang opts else ""
                    sep = if null pref || null dir then "" else [pathSeparator]
                  in pref ++ sep ++ dir
-
-makefile :: SharedOptions -> Doc
-makefile opts = vcat
-    [ mkVar "OCAMLC" "ocamlc"
-    , mkVar "OCAMLYACC" "ocamlyacc"
-    , mkVar "OCAMLLEX" "ocamllex"
-    , mkVar "OCAMLCFLAGS" ""
-    , mkRule "all" []
-        [ "$(OCAMLYACC) " ++ fsyaccFile opts
-        , "$(OCAMLLEX) "  ++ fslexFile opts
-        , "$(OCAMLC) $(OCAMLCFLAGS) -o " ++ mkFile withLang "Test" "" opts +++
-                          utilFile opts +++
-                          absFile opts +++ templateFile opts +++
-                          showFile opts +++ printerFile opts +++
-                          mkFile withLang "Par" "mli" opts +++
-                          mkFile withLang "Par" "ml" opts +++
-                          mkFile withLang "Lex" "ml" opts +++
-                          tFile opts ]
-    , mkRule "clean" []
-        [ "-rm -f " ++ unwords (map (dir++) [ "*.cmi", "*.cmo", "*.o" ]) ]
-    , mkRule "distclean" ["clean"]
-        [ "-rm -f " ++ unwords [ mkFile withLang "Lex" "*" opts,
-                                 mkFile withLang "Par" "*" opts,
-                                 mkFile withLang "Layout" "*" opts,
-                                 mkFile withLang "Skel" "*" opts,
-                                 mkFile withLang "Print" "*" opts,
-                                 mkFile withLang "Show" "*" opts,
-                                 mkFile withLang "Test" "*" opts,
-                                 mkFile withLang "Abs" "*" opts,
-                                 mkFile withLang "Test" "" opts,
-                                 utilFile opts,
-                                 "Makefile*" ]]
-    ]
-  where dir = let d = codeDir opts in if null d then "" else d ++ [pathSeparator]
-
-utilM :: String -> String
-utilM moduleName = unlines
-    ["//automatically generated by BNFC",
-     "module" +++ moduleName,
-     "open Microsoft.FSharp.Text.Lexing",
-     "",
-     "exception ParseError of Position * Position "
-    ]

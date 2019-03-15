@@ -32,7 +32,7 @@ import BNFC.CF
 import AbsBNF
 import BNFC.Backend.FSharp.CFtoFsYacc (terminal)
 import BNFC.Utils ((+++), cstring, cchar)
-import BNFC.Backend.FSharp.FSharpUtil (indent)
+import BNFC.Backend.FSharp.FSharpUtilities (indent)
 
 
 cf2fslex :: String -> String -> CF -> String

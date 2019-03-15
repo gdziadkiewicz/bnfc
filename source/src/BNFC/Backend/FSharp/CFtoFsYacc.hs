@@ -31,7 +31,7 @@ import Data.List (intersperse,nub)
 import Data.Char
 
 import BNFC.Utils ((+++))
-import BNFC.Backend.FSharp.FSharpUtil
+import BNFC.Backend.FSharp.FSharpUtilities
 
 -- Type declarations
 

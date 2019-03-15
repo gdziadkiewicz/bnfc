@@ -23,7 +23,7 @@ import Text.PrettyPrint
 
 import BNFC.CF
 import BNFC.Utils((+++))
-import BNFC.Backend.FSharp.FSharpUtil
+import BNFC.Backend.FSharp.FSharpUtilities
 
 -- | F# comment
 -- >>> comment "I'm a comment"

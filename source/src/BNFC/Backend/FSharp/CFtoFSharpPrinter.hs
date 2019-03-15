@@ -27,7 +27,7 @@ import Data.Maybe (fromJust)
 
 import BNFC.CF
 import BNFC.Utils
-import BNFC.Backend.FSharp.FSharpUtil
+import BNFC.Backend.FSharp.FSharpUtilities
 import BNFC.PrettyPrint
 import BNFC.Backend.Haskell.CFtoPrinter (compareRules)
 

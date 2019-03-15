@@ -26,7 +26,7 @@ import Text.PrettyPrint
 import BNFC.CF
 import BNFC.Utils((+++))
 import Data.List(intersperse)
-import BNFC.Backend.FSharp.FSharpUtil
+import BNFC.Backend.FSharp.FSharpUtilities
 
 -- to produce an F# module
 cf2Abstract :: String -> CF -> String

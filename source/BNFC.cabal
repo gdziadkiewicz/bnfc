@@ -55,7 +55,8 @@ Executable bnfc
     containers,
     pretty >=1.1 && <1.2,
     filepath,
-    deepseq
+    deepseq,
+    TurboFunicular
   build-tools:         alex, happy
   Main-is: Main.hs
   HS-source-dirs: compat src
@@ -175,7 +176,10 @@ Executable bnfc
 
     -- F# backend
     BNFC.Backend.FSharp,
-    BNFC.Backend.FSharp.FSharpUtil,
+    BNFC.Backend.FSharp.FSharpUtilities,
+    BNFC.Backend.FSharp.FsParseError,
+    BNFC.Backend.FSharp.FsprojFile,
+    BNFC.Backend.FSharp.FsMakeFile,
     BNFC.Backend.FSharp.CFtoFSharpTest,
     BNFC.Backend.FSharp.CFtoFSharpShow,
     BNFC.Backend.FSharp.CFtoFSharpPrinter,
@@ -233,6 +237,111 @@ Test-suite unit-tests
    -- need to be there for alex to work
    LexBNF
    ParBNF
+   AbsBNF
+   BNFC.Backend.Base
+   BNFC.Backend.BaseSpec
+   BNFC.Backend.C
+   BNFC.Backend.C.CFtoBisonC
+   BNFC.Backend.C.CFtoCAbs
+   BNFC.Backend.C.CFtoCPrinter
+   BNFC.Backend.C.CFtoCSkel
+   BNFC.Backend.C.CFtoFlexC
+   BNFC.Backend.CPP.Makefile
+   BNFC.Backend.CPP.Naming
+   BNFC.Backend.CPP.NoSTL
+   BNFC.Backend.CPP.NoSTL.CFtoBison
+   BNFC.Backend.CPP.NoSTL.CFtoCPPAbs
+   BNFC.Backend.CPP.NoSTL.CFtoCVisitSkel
+   BNFC.Backend.CPP.NoSTL.CFtoFlex
+   BNFC.Backend.CPP.NoSTL.RegToFlex
+   BNFC.Backend.CPP.NoSTLSpec
+   BNFC.Backend.CPP.PrettyPrinter
+   BNFC.Backend.CPP.STL
+   BNFC.Backend.CPP.STL.CFtoBisonSTL
+   BNFC.Backend.CPP.STL.CFtoCVisitSkelSTL
+   BNFC.Backend.CPP.STL.CFtoSTLAbs
+   BNFC.Backend.CPP.STL.STLUtils
+   BNFC.Backend.CPP.STLSpec
+   BNFC.Backend.CSharp
+   BNFC.Backend.CSharp.CAbstoCSharpAbs
+   BNFC.Backend.CSharp.CAbstoCSharpAbstractVisitSkeleton
+   BNFC.Backend.CSharp.CAbstoCSharpVisitSkeleton
+   BNFC.Backend.CSharp.CFtoCSharpPrinter
+   BNFC.Backend.CSharp.CFtoGPLEX
+   BNFC.Backend.CSharp.CFtoGPPG
+   BNFC.Backend.CSharp.CSharpUtils
+   BNFC.Backend.CSharp.RegToGPLEX
+   BNFC.Backend.CSharpSpec
+   BNFC.Backend.CSpec
+   BNFC.Backend.Common
+   BNFC.Backend.Common.Makefile
+   BNFC.Backend.Common.NamedVariables
+   BNFC.Backend.Common.NamedVariablesSpec
+   BNFC.Backend.Common.OOAbstract
+   BNFC.Backend.Common.StrUtils
+   BNFC.Backend.Haskell
+   BNFC.Backend.Haskell.CFtoAbstract
+   BNFC.Backend.Haskell.CFtoAlex
+   BNFC.Backend.Haskell.CFtoAlex2
+   BNFC.Backend.Haskell.CFtoAlex3
+   BNFC.Backend.Haskell.CFtoHappy
+   BNFC.Backend.Haskell.CFtoLayout
+   BNFC.Backend.Haskell.CFtoPrinter
+   BNFC.Backend.Haskell.CFtoTemplate
+   BNFC.Backend.Haskell.HsOpts
+   BNFC.Backend.Haskell.MkErrM
+   BNFC.Backend.Haskell.MkSharedString
+   BNFC.Backend.Haskell.RegToAlex
+   BNFC.Backend.Haskell.ToCNF
+   BNFC.Backend.Haskell.Utils
+   BNFC.Backend.HaskellGADT
+   BNFC.Backend.HaskellGADT.CFtoAbstractGADT
+   BNFC.Backend.HaskellGADT.CFtoTemplateGADT
+   BNFC.Backend.HaskellGADT.HaskellGADTCommon
+   BNFC.Backend.Java
+   BNFC.Backend.Java.CFtoAbstractVisitor
+   BNFC.Backend.Java.CFtoAllVisitor
+   BNFC.Backend.Java.CFtoAntlr4Lexer
+   BNFC.Backend.Java.CFtoAntlr4Parser
+   BNFC.Backend.Java.CFtoComposVisitor
+   BNFC.Backend.Java.CFtoCup15
+   BNFC.Backend.Java.CFtoFoldVisitor
+   BNFC.Backend.Java.CFtoJLex15
+   BNFC.Backend.Java.CFtoJavaAbs15
+   BNFC.Backend.Java.CFtoJavaPrinter15
+   BNFC.Backend.Java.CFtoVisitSkel15
+   BNFC.Backend.Java.RegToAntlrLexer
+   BNFC.Backend.Java.RegToJLex
+   BNFC.Backend.Java.Utils
+   BNFC.Backend.JavaSpec
+   BNFC.Backend.Latex
+   BNFC.Backend.LatexSpec
+   BNFC.Backend.OCaml
+   BNFC.Backend.OCaml.CFtoOCamlAbs
+   BNFC.Backend.OCaml.CFtoOCamlLex
+   BNFC.Backend.OCaml.CFtoOCamlPrinter
+   BNFC.Backend.OCaml.CFtoOCamlShow
+   BNFC.Backend.OCaml.CFtoOCamlTemplate
+   BNFC.Backend.OCaml.CFtoOCamlTest
+   BNFC.Backend.OCaml.CFtoOCamlYacc
+   BNFC.Backend.OCaml.OCamlUtil
+   BNFC.Backend.OCamlSpec
+   BNFC.Backend.Txt2Tag
+   BNFC.Backend.XML
+   BNFC.CF
+   BNFC.CFSpec
+   BNFC.GetCF
+   BNFC.GetCFSpec
+   BNFC.Options
+   BNFC.PrettyPrint
+   BNFC.ToCNFCore
+   BNFC.TypeChecker
+   BNFC.Utils
+   BNFC.WarningM
+   Data.Pair
+   ErrM
+   Paths_BNFC
+   Prelude'
 
 Test-suite bnfc-doctests
   type:           exitcode-stdio-1.0

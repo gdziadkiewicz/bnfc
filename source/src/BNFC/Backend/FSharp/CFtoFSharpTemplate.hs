@@ -27,7 +27,7 @@ module BNFC.Backend.FSharp.CFtoFSharpTemplate (
 import BNFC.CF
 import BNFC.Utils((+++))
 import Data.Char
-import BNFC.Backend.FSharp.FSharpUtil
+import BNFC.Backend.FSharp.FSharpUtilities
 
 
 type ModuleName = String

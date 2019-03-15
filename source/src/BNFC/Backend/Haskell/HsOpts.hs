@@ -85,9 +85,9 @@ mkMod addLang name opts = mkNamespace opts <.> mod
 -- >>> mkFile noLang "Abstract" "" defaultOptions { lang = "abc" }
 -- "Abstract"
 -- >>> mkFile withLang "Abstract" "hs" defaultOptions { lang = "abc", inDir = True }
--- "Abc/Abstract.hs"
+-- "Abc\\Abstract.hs"
 -- >>> mkFile withLang "Abstract" "hs" defaultOptions { lang = "abc", inDir = True, inPackage = Just "A.B.C" }
--- "A/B/C/Abc/Abstract.hs"
+-- "A\\B\\C\\Abc\\Abstract.hs"
 mkFile :: (Options -> String -> String) -> String -> String -> Options -> FilePath
 mkFile addLang name ext opts = pkgToDir (mkMod addLang name opts) <.> ext
 
@@ -120,10 +120,10 @@ mkNamespace opts = intercalate "." $ catMaybes [inPackage opts, dir]
 -- >>> codeDir defaultOptions { lang = "Bla", inDir = True }
 -- "Bla"
 -- >>> codeDir defaultOptions { inPackage = Just "My.Cool.Package" }
--- "My/Cool/Package"
+-- "My\\Cool\\Package"
 -- >>> codeDir defaultOptions { lang = "bla_bla", inDir = True }
 -- "BlaBla"
 -- >>> codeDir defaultOptions { lang = "bla", inDir = True, inPackage = Just "P"}
--- "P/Bla"
+-- "P\\Bla"
 codeDir :: Options -> FilePath
 codeDir = pkgToDir . mkNamespace
