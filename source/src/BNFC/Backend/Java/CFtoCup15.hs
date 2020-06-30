@@ -15,7 +15,7 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA
 -}
 
 {-
@@ -37,17 +37,16 @@
 
    **************************************************************
 -}
-module BNFC.Backend.Java.CFtoCup15 ( cf2Cup ) where
+module BNFC.Backend.Java.CFtoCup15 ( cf2Cup, definedRules ) where
 
 import BNFC.CF
 import Data.List
 import BNFC.Backend.Common.NamedVariables
+import BNFC.Backend.Java.CFtoJavaAbs15 (typename)
 import BNFC.Options (RecordPositions(..))
 import BNFC.Utils ( (+++) )
 import BNFC.TypeChecker  -- We need to (re-)typecheck to figure out list instances in
                     -- defined rules.
-import ErrM
-
 import Data.Char
 
 type Rules   = [(NonTerminal,[(Pattern,Action)])]
@@ -56,10 +55,10 @@ type Action  = String
 type MetaVar = String
 
 --The environment comes from the CFtoJLex
-cf2Cup :: String -> String -> CF -> RecordPositions -> SymEnv -> String
+cf2Cup :: String -> String -> CF -> RecordPositions -> KeywordEnv -> String
 cf2Cup packageBase packageAbsyn cf rp env = unlines
     [ header
-    , declarations packageAbsyn (allCats cf)
+    , declarations packageAbsyn (allParserCats cf)
     , tokens env
     , specialToks cf
     , specialRules cf
@@ -87,7 +86,7 @@ cf2Cup packageBase packageAbsyn cf rp env = unlines
       , parseMethod packageAbsyn (firstEntry cf)
       , "public <B,A extends java.util.LinkedList<? super B>> "
         ++ "A cons_(B x, A xs) { xs.addFirst(x); return xs; }"
-      , definedRules packageAbsyn cf
+      , unlines $ definedRules packageAbsyn cf
       , "public void syntax_error(java_cup.runtime.Symbol cur_token)"
       , "{"
       , "  report_error(\"Syntax Error, trying to recover and continue"
@@ -103,9 +102,9 @@ cf2Cup packageBase packageAbsyn cf rp env = unlines
       , ":}"
       ]
 
-definedRules :: String -> CF -> String
+definedRules :: String -> CF -> [String]
 definedRules packageAbsyn cf =
-    unlines [ rule f xs e | FunDef f xs e <- cfgPragmas cf ]
+    concat [ rule f xs e | FunDef f xs e <- cfgPragmas cf ]
   where
     ctx = buildContext cf
 
@@ -116,10 +115,10 @@ definedRules packageAbsyn cf =
 
     rule f xs e =
         case checkDefinition' list ctx f xs e of
-            Bad err          ->
+            Left err          ->
                 error $ "Panic! This should have been caught already:\n"
                     ++ err
-            Ok (args,(e',t)) -> unlines
+            Right (args,(e',t)) ->
                 [ "public " ++ javaType t ++ " " ++ f ++ "_ (" ++
                     intercalate ", " (map javaArg args) ++ ") {"
                 , "  return " ++ javaExp e' ++ ";"
@@ -129,20 +128,17 @@ definedRules packageAbsyn cf =
 
        javaType :: Base -> String
        javaType (ListT (BaseT x)) = packageAbsyn ++ ".List"
-                                   ++ show (normCat $ strToCat x)
+                                   ++ catToStr (normCat $ strToCat x)
        javaType (ListT t)         = javaType t
-       javaType (BaseT x)
-           | isToken x ctx = "String"
-           | otherwise     = packageAbsyn ++ "."
-                           ++ show (normCat $ strToCat x)
+       javaType (BaseT x)         = typename packageAbsyn (ctxTokens ctx) $
+                                      catToStr $ normCat $ strToCat x
 
        javaArg :: (String, Base) -> String
        javaArg (x,t) = javaType t ++ " " ++ x ++ "_"
 
        javaExp :: Exp -> String
        javaExp (App "null" []) = "null"
-       javaExp (App x [])
-           | x `elem` xs       = x ++ "_"      -- argument
+       javaExp (Var x)         = x ++ "_"      -- argument
        javaExp (App t [e])
            | isToken t ctx     = call "new String" [e]
        javaExp (App x es)
@@ -158,24 +154,23 @@ definedRules packageAbsyn cf =
 
 -- peteg: FIXME JavaCUP can only cope with one entry point AFAIK.
 prEntryPoint :: CF -> String
-prEntryPoint cf = unlines ["", "start with " ++ show (firstEntry cf) ++ ";", ""]
+prEntryPoint cf = unlines ["", "start with " ++ identCat (firstEntry cf) ++ ";", ""]
 --                  [ep]  -> unlines ["", "start with " ++ ep ++ ";", ""]
 --                  eps   -> error $ "FIXME multiple entry points." ++ show eps
 
 --This generates a parser method for each entry point.
 parseMethod :: String -> Cat -> String
-parseMethod packageAbsyn cat =
-  if normCat cat /= cat
-    then ""
-    else unlines
-             [ "  public" +++ packageAbsyn ++ "." ++ cat' +++ "p" ++ cat' ++ "()"
+parseMethod packageAbsyn cat = unlines
+             [ "  public" +++ packageAbsyn ++ "." ++ dat +++ "p" ++ cat' ++ "()"
                  ++ " throws Exception"
              , "  {"
              , "    java_cup.runtime.Symbol res = parse();"
-             , "    return (" ++ packageAbsyn ++ "." ++ cat' ++ ") res.value;"
+             , "    return (" ++ packageAbsyn ++ "." ++ dat ++ ") res.value;"
              , "  }"
              ]
-    where cat' = identCat (normCat cat)
+    where
+    dat  = identCat (normCat cat)
+    cat' = identCat cat
 
 --non-terminal types
 declarations :: String -> [Cat] -> String
@@ -185,7 +180,7 @@ declarations packageAbsyn ns = unlines (map (typeNT packageAbsyn) ns)
                     ++ identCat (normCat nt) +++ identCat nt ++ ";"
 
 --terminal types
-tokens :: SymEnv -> String
+tokens :: KeywordEnv -> String
 tokens ts = unlines (map declTok ts)
  where
   declTok (s,r) = "terminal" +++ r ++ ";    //   " ++ s
@@ -199,7 +194,7 @@ specialToks cf = unlines
   , ifC catIdent   "terminal String _IDENT_;"
   ]
    where
-    ifC cat s = if isUsedCat cf cat then s else ""
+    ifC cat s = if isUsedCat cf (TokenCat cat) then s else ""
 
 specialRules:: CF -> String
 specialRules cf =
@@ -207,13 +202,13 @@ specialRules cf =
 
 --The following functions are a (relatively) straightforward translation
 --of the ones in CFtoHappy.hs
-rulesForCup :: String -> CF -> RecordPositions -> SymEnv -> Rules
+rulesForCup :: String -> CF -> RecordPositions -> KeywordEnv -> Rules
 rulesForCup packageAbsyn cf rp env = map mkOne $ ruleGroups cf where
   mkOne (cat,rules) = constructRule packageAbsyn cf rp env rules cat
 
 -- | For every non-terminal, we construct a set of rules. A rule is a sequence of
 -- terminals and non-terminals, and an action to be performed.
-constructRule :: String -> CF -> RecordPositions -> SymEnv -> [Rule] -> NonTerminal
+constructRule :: String -> CF -> RecordPositions -> KeywordEnv -> [Rule] -> NonTerminal
     -> (NonTerminal,[(Pattern,Action)])
 constructRule packageAbsyn cf rp env rules nt =
     (nt, [ (p, generateAction packageAbsyn nt (funRule r) (revM b m) b rp)
@@ -274,13 +269,13 @@ generateAction packageAbsyn nt f ms rev rp
 -- | Generate patterns and a set of metavariables indicating
 -- where in the pattern the non-terminal.
 --
--- >>> generatePatterns [] (Rule "myfun" (Cat "A") [])
+-- >>> generatePatterns [] (Rule "myfun" (Cat "A") [] Parsable)
 -- (" /* empty */ ",[])
 --
--- >>> generatePatterns [("def", "_SYMB_1")] (Rule "myfun" (Cat "A") [Right "def", Left (Cat "B")])
+-- >>> generatePatterns [("def", "_SYMB_1")] (Rule "myfun" (Cat "A") [Right "def", Left (Cat "B")] Parsable)
 -- ("_SYMB_1:p_1 B:p_2 ",["p_2"])
 
-generatePatterns :: SymEnv -> Rule -> (Pattern,[MetaVar])
+generatePatterns :: KeywordEnv -> Rule -> (Pattern,[MetaVar])
 generatePatterns env r = case rhsRule r of
     []  -> (" /* empty */ ", [])
     its -> (mkIt 1 its, metas its)

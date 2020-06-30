@@ -16,7 +16,7 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA
 -}
 
 {-
@@ -54,7 +54,7 @@ import BNFC.Backend.Common.NamedVariables
 -- This introduces risks of clashes if somebody uses the same identifier for
 -- user defined tokens. This is not handled.
 -- returns the environment because the parser uses it.
-cf2AntlrLex :: String -> CF -> (Doc, SymEnv)
+cf2AntlrLex :: String -> CF -> (Doc, KeywordEnv)
 cf2AntlrLex packageBase cf = (vcat
     [ prelude packageBase
     , cMacros
@@ -102,7 +102,7 @@ escapeChars = concatMap escapeChar
 -- bar : '/' ;
 -- >>> lexSymbols [("~","bar")]
 -- bar : '~' ;
-lexSymbols :: SymEnv -> Doc
+lexSymbols :: KeywordEnv -> Doc
 lexSymbols ss = vcat $  map transSym ss
   where
     transSym (s,r) = text r <>  " : '" <> text (escapeChars s) <> "' ;"
@@ -130,16 +130,16 @@ restOfLexerGrammar cf = vcat
         "IDENT : IDENTIFIER_FIRST (IDENTIFIER_FIRST | DIGIT)*;"
         ]
     , "// Whitespace"
-    , "WS : (' ' | '\\r' | '\\t' | '\\n')+ ->  skip;"
+    , "WS : (' ' | '\\r' | '\\t' | '\\n' | '\\f')+ ->  skip;"
     , "// Escapable sequences"
     , "fragment"
-    , "Escapable : ('\"' | '\\\\' | 'n' | 't' | 'r');"
+    , "Escapable : ('\"' | '\\\\' | 'n' | 't' | 'r' | 'f');"
     , "ErrorToken : . ;"
     , ifString stringmodes
     , ifChar charmodes
     ]
   where
-    ifC cat s     = if isUsedCat cf cat then vcat s else ""
+    ifC cat s     = if isUsedCat cf (TokenCat cat) then vcat s else ""
     ifString      = ifC catString
     ifChar        = ifC catChar
     strdec        = [ "// String token type"
@@ -147,7 +147,7 @@ restOfLexerGrammar cf = vcat
                     ]
     chardec       = ["CHAR : '\\''   -> more, mode(CHARMODE);"]
     userDefTokens = vcat
-        [ text (show name) <>" : " <> text (printRegJLex exp) <> ";"
+        [ text name <> " : " <> text (printRegJLex exp) <> ";"
         | (name, exp) <- tokenPragmas cf ]
     stringmodes   = [ "mode STRESCAPE;"
         , "STRESCAPED : Escapable  -> more, popMode ;"

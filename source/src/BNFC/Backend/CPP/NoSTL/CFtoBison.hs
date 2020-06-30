@@ -14,27 +14,9 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA
 -}
 
-{-
-    BNF Converter: C++ Bison generator
-    Copyright (C) 2004  Author:  Michael Pellauer
-
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
--}
 
 {-
    **************************************************************
@@ -60,16 +42,18 @@
 
 module BNFC.Backend.CPP.NoSTL.CFtoBison (cf2Bison) where
 
+import Data.Char  ( toLower )
+import Data.List  ( intersperse, nub )
+import Data.Maybe ( fromMaybe )
+import qualified Data.Map as Map
+
 import BNFC.CF
-import Data.List (intersperse)
 import BNFC.Backend.Common.NamedVariables hiding (varName)
-import BNFC.Backend.CPP.STL.CFtoBisonSTL (union)
-import Data.Char (toLower,isUpper)
-import BNFC.Utils ((+++))
-import BNFC.TypeChecker
-import ErrM
-import BNFC.Backend.C.CFtoBisonC (startSymbol)
+import BNFC.Backend.C.CFtoBisonC
+  ( resultName, specialToks, startSymbol, typeName, varName )
+import BNFC.Backend.CPP.STL.CFtoBisonSTL ( tokens, union, definedRules )
 import BNFC.PrettyPrint
+import BNFC.Utils ( (+++) )
 
 --This follows the basic structure of CFtoHappy.
 
@@ -80,11 +64,11 @@ type Action      = String
 type MetaVar     = String
 
 --The environment comes from the CFtoFlex
-cf2Bison :: String -> CF -> SymEnv -> String
+cf2Bison :: String -> CF -> SymMap -> String
 cf2Bison name cf env
  = unlines
     [header name cf,
-     render $ union Nothing (allCats cf),
+     render $ union Nothing (allParserCats cf),
      "%token _ERROR_",
      tokens user env,
      declarations cf,
@@ -104,10 +88,13 @@ header name cf = unlines
     , "#include <stdio.h>"
     , "#include <string.h>"
     , "#include \"Absyn.H\""
+    , ""
+    , "#define YYMAXDEPTH 10000000"  -- default maximum stack size is 10000, but right-recursion needs O(n) stack
+    , ""
     , "int yyparse(void);"
     , "int yylex(void);"
     , "int yy_mylinenumber;"  --- hack to get line number. AR 2006
-    , "int initialize_lexer(FILE * inp);"
+    , "void initialize_lexer(FILE * inp);"
     , "int yywrap(void)"
     , "{"
     , "  return 1;"
@@ -120,68 +107,35 @@ header name cf = unlines
     , "}"
     , ""
     , definedRules cf
-    , unlines $ map (parseMethod name) (allCatsNorm cf)  -- (allEntryPoints cf), M.F. 2004-09-14 fix of [Ty2] bug.
-    , concatMap reverseList (filter isList (allCatsNorm cf))
+    , concatMap reverseList $ filter isList $ allParserCatsNorm cf
+    , unlines $ map parseResult dats
+    , unlines $ map (parseMethod cf name) eps
     , "%}"
     ]
-
-definedRules :: CF -> String
-definedRules cf = unlines [ rule f xs e | FunDef f xs e <- cfgPragmas cf]
   where
-    ctx = buildContext cf
+  eps  = allEntryPoints cf
+  dats = nub $ map normCat eps
 
-    list = LC (const "[]") (\ t -> "List" ++ unBase t)
-      where
-        unBase (ListT t) = unBase t
-        unBase (BaseT x) = show$normCat$strToCat x
 
-    rule f xs e =
-        case checkDefinition' list ctx f xs e of
-            Bad err -> error $ "Panic! This should have been caught already:\n" ++ err
-            Ok (args,(e',t)) -> unlines
-                [ cppType t ++ " " ++ f ++ "_ (" ++
-                  concat (intersperse ", " $ map cppArg args) ++ ") {"
-                , "  return " ++ cppExp e' ++ ";"
-                , "}"
-                ]
-      where
-        cppType :: Base -> String
-        cppType (ListT (BaseT x)) = "List" ++ show (normCat (strToCat x)) ++ " *"
-        cppType (ListT t) = cppType t ++ " *"
-        cppType (BaseT x)
-            | isToken x ctx = "String"
-            | otherwise = show (normCat (strToCat x)) ++ " *"
 
-        cppArg :: (String, Base) -> String
-        cppArg (x,t) = cppType t ++ " " ++ x ++ "_"
-
-        cppExp :: Exp -> String
-        cppExp (App "[]" []) = "0"
-        cppExp (App x [])
-            | elem x xs = x ++ "_"  -- argument
-        cppExp (App t [e])
-            | isToken t ctx = cppExp e
-        cppExp (App x es)
-            | isUpper (head x) = call ("new " ++ x) es
-            | otherwise = call (x ++ "_") es
-        cppExp (LitInt n) = show n
-        cppExp (LitDouble x) = show x
-        cppExp (LitChar c) = show c
-        cppExp (LitString s) = show s
-
-        call x es = x ++ "(" ++ concat (intersperse ", " $ map cppExp es) ++ ")"
+-- | Generates declaration and initialization of the @YY_RESULT@ for a parser.
+--
+--   Different parsers (for different precedences of the same category)
+--   share such a declaration.
+--
+--   Expects a normalized category.
+parseResult :: Cat -> String
+parseResult cat =
+  "static " ++ cat' ++ "*" +++ resultName cat' +++ "= 0;"
+  where
+  cat' = identCat cat
 
 
 --This generates a parser method for each entry point.
-parseMethod :: String -> Cat -> String
-parseMethod _ cat =
-  -- if normCat cat /= cat     M.F. 2004-09-17 comment. No duplicates from allCatsIdNorm
-  -- then ""
-  -- else
-  unlines
+parseMethod :: CF -> String -> Cat -> String
+parseMethod cf _ cat = unlines
   [
-   cat' ++ "*" +++ (resultName cat') +++ "= 0;",
-   cat' ++"* p" ++ cat' ++ "(FILE *inp)",
+   dat ++"* p" ++ par ++ "(FILE *inp)",
    "{",
    "  initialize_lexer(inp);",
    "  if (yyparse())",
@@ -190,12 +144,16 @@ parseMethod _ cat =
    "  }",
    "  else",
    "  { /* Success */",
-   "    return" +++ (resultName cat') ++ ";",
+   "    return" +++ res ++ ";",
    "  }",
    "}"
   ]
  where
-  cat' = identCat (normCat cat)
+  dat  = identCat (normCat cat)
+  par  = identCat cat
+  res0   = resultName dat
+  revRes = "reverse" ++ dat ++ "(" ++ res0 ++ ")"
+  res    = if cat `elem` cfgReversibleCats cf then revRes else res0
 
 --This method generates list reversal functions for each list type.
 reverseList :: Cat -> String
@@ -221,38 +179,19 @@ reverseList c = unlines
 
 --declares non-terminal types.
 declarations :: CF -> String
-declarations cf = concatMap (typeNT cf) (allCats cf)
+declarations cf = concatMap (typeNT cf) (allParserCats cf)
  where --don't define internal rules
    typeNT cf nt | rulesForCat cf nt /= [] = "%type <" ++ varName nt ++ "> " ++ identCat nt ++ "\n"
    typeNT _ _ = ""
 
---declares terminal types.
-tokens :: [UserDef] -> SymEnv -> String
-tokens user ts = concatMap (declTok user) ts
- where
-  declTok u (s,r) = if elem s (map show u)
-    then "%token<string_> " ++ r ++ "    //   " ++ s ++ "\n"
-    else "%token " ++ r ++ "    //   " ++ s ++ "\n"
-
-specialToks :: CF -> String
-specialToks cf = concat [
-  ifC catString "%token<string_> _STRING_\n",
-  ifC catChar "%token<char_> _CHAR_\n",
-  ifC catInteger "%token<int_> _INTEGER_\n",
-  ifC catDouble "%token<double_> _DOUBLE_\n",
-  ifC catIdent "%token<string_> _IDENT_\n"
-  ]
-   where
-    ifC cat s = if isUsedCat cf cat then s else ""
-
 --The following functions are a (relatively) straightforward translation
 --of the ones in CFtoHappy.hs
-rulesForBison :: String -> CF -> SymEnv -> Rules
+rulesForBison :: String -> CF -> SymMap -> Rules
 rulesForBison _ cf env = map mkOne $ ruleGroups cf where
   mkOne (cat,rules) = constructRule cf env rules cat
 
 -- For every non-terminal, we construct a set of rules.
-constructRule :: CF -> SymEnv -> [Rule] -> NonTerminal -> (NonTerminal,[(Pattern,Action)])
+constructRule :: CF -> SymMap -> [Rule] -> NonTerminal -> (NonTerminal,[(Pattern,Action)])
 constructRule cf env rules nt = (nt,[(p,(generateAction (ruleName r) b m) +++ result) |
      r0 <- rules,
      let (b,r) = if isConsFun (funRule r0) && elem (valCat r0) revs
@@ -284,18 +223,15 @@ generateAction f b ms =
 
 -- Generate patterns and a set of metavariables indicating
 -- where in the pattern the non-terminal
-generatePatterns :: CF -> SymEnv -> Rule -> (Pattern,[MetaVar])
+generatePatterns :: CF -> SymMap -> Rule -> (Pattern,[MetaVar])
 generatePatterns cf env r = case rhsRule r of
   []  -> ("/* empty */",[])
   its -> (unwords (map mkIt its), metas its)
  where
    mkIt i = case i of
-     Left c -> case lookup (show c) env of
-       Just x -> x
-       Nothing -> typeName (identCat c)
-     Right s -> case lookup s env of
-       Just x -> x
-       Nothing -> s
+     Left (TokenCat s) -> fromMaybe (typeName s) $ Map.lookup (Tokentype s) env
+     Left  c -> identCat c
+     Right s -> fromMaybe s $ Map.lookup (Keyword s) env
    metas its = [revIf c ('$': show i) | (i,Left c) <- zip [1 :: Int ..] its]
    revIf c m = if (not (isConsFun (funRule r)) && elem c revs)
                  then ("reverse" ++ (identCat (normCat c)) ++ "(" ++ m ++ ")")
@@ -314,19 +250,3 @@ prRules ((nt,((p,a):ls)):rs) =
   nt' = identCat nt
   pr []           = []
   pr ((p,a):ls)   = (unlines [(concat $ intersperse " " ["  |", p, "{ $$ =", a , "}"])]) ++ pr ls
-
---Some helper functions.
-resultName :: String -> String
-resultName s = "YY_RESULT_" ++ s ++ "_"
-
---slightly stronger than the NamedVariable version.
-varName :: Cat -> String
-varName = (++ "_") . map toLower . identCat . normCat
-
-typeName :: String -> String
-typeName "Ident" = "_IDENT_"
-typeName "String" = "_STRING_"
-typeName "Char" = "_CHAR_"
-typeName "Integer" = "_INTEGER_"
-typeName "Double" = "_DOUBLE_"
-typeName x = x

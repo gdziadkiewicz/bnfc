@@ -3,6 +3,7 @@ module BNFC.Backend.CSharp.RegToGPLEX (printRegGPLEX) where
 -- modified from RegToFlex
 
 import AbsBNF
+import BNFC.Backend.Common (flexEps)
 
 -- the top-level printing method
 printRegGPLEX :: Reg -> String
@@ -42,8 +43,8 @@ instance Print Char where
 prPrec :: Int -> Int -> [String] -> [String]
 prPrec i j = if j<i then parenth else id
 
-instance Print Ident where
-  prt _ (Ident i) = [i]
+instance Print Identifier where
+  prt _ (Identifier i) = [i]
 
 instance Print Reg where
   prt i e = case e of
@@ -53,7 +54,7 @@ instance Print Reg where
    RStar reg       -> prPrec i 3 (concat [prt 3 reg , ["*"]])
    RPlus reg       -> prPrec i 3 (concat [prt 3 reg , ["+"]])
    ROpt reg        -> prPrec i 3 (concat [prt 3 reg , ["?"]])
-   REps            -> prPrec i 3 (["[^.]"])
+   REps            -> prPrec i 3 [ flexEps ]
    RChar c         -> prPrec i 3 (prt 0 [mkEsc [c]])
    RAlts str       -> prPrec i 3 (concat [["["], prt 0 $ mkEsc str, ["]"]])
    RSeqs str       -> prPrec i 2 (concat (map (prt 0) $ mkEsc str))

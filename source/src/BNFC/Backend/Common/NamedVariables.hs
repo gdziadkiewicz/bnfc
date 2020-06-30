@@ -16,7 +16,7 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA
 -}
 
 
@@ -70,22 +70,34 @@ module BNFC.Backend.Common.NamedVariables where
 
 import Prelude'
 
-import BNFC.CF
-import Data.Char (toLower)
-import Data.List (nub)
-import Text.PrettyPrint
 import Control.Arrow (left, (&&&))
-import Data.Either (lefts)
+import Data.Char     (toLower)
+import Data.Either   (lefts)
+import Data.List     (nub)
+import Data.Map      (Map)
+
+import Text.PrettyPrint
+
+import BNFC.CF
 
 type IVar = (String, Int)
 --The type of an instance variable
 --and a # unique to that type
 
-type UserDef = Cat --user-defined types
+type UserDef = TokenCat --user-defined types
 
+-- | A symbol-mapping environment.
+type SymEnv = KeywordEnv
 
---A symbol-mapping environment.
-type SymEnv = [(String, String)]
+-- | Map keywords to their token name.
+type KeywordEnv = [(String, String)]
+
+-- | Map keywords and user-defined token types to their token name.
+type SymMap = Map SymKey String
+data SymKey
+  = Keyword String    -- ^ Keyword like "(", "while", "true", ...
+  | Tokentype String  -- ^ Token type like "Integer", "Char", ...
+  deriving (Eq, Ord, Show)
 
 -- | Converts a list of categories into their types to be used as instance
 -- variables. If a category appears only once, it is given the number 0,
@@ -95,7 +107,6 @@ type SymEnv = [(String, String)]
 -- [("A",1),("B",0),("A",2)]
 --
 getVars :: [Cat] -> [IVar]
-getVars [] = []
 getVars cs = foldl addVar [] (map identCat cs)
   where
     addVar vs = addVar' vs 0

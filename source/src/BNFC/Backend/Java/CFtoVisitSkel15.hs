@@ -16,7 +16,7 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA
 -}
 
 {-
@@ -44,12 +44,15 @@ module BNFC.Backend.Java.CFtoVisitSkel15 (cf2VisitSkel) where
 
 import Prelude'
 
-import BNFC.CF
-import BNFC.Backend.Java.CFtoJavaAbs15 (typename)
-import BNFC.Utils ((+++))
-import BNFC.Backend.Common.NamedVariables
+import Data.Bifunctor   ( second )
+import Data.Either      ( lefts  )
 import Text.PrettyPrint
-import Data.Either (lefts)
+
+import BNFC.CF
+import BNFC.Utils       ( (+++) )
+
+import BNFC.Backend.Common.NamedVariables
+import BNFC.Backend.Java.CFtoJavaAbs15    ( typename )
 
 --Produces a Skeleton using the Visitor Design Pattern.
 --Thus the user can choose which Skeleton to use.
@@ -58,16 +61,16 @@ cf2VisitSkel :: String -> String -> CF -> String
 cf2VisitSkel packageBase packageAbsyn cf =
   concat [
     header,
---    "  // NOT IMPLEMENTED for java1.5\n",
     concatMap (prData packageAbsyn user) groups,
     "}"]
   where
-    user = fst (unzip (tokenPragmas cf))
-    groups = fixCoercions (ruleGroupsInternals cf)
+    user   = fst $ unzip $ tokenPragmas cf
+    groups = fixCoercions $ ruleGroupsInternals cf
     header = unlines [
       "package" +++ packageBase ++ ";",
-      "import" +++ packageAbsyn ++ ".*;",
+      "",
       "/*** BNFC-Generated Visitor Design Pattern Skeleton. ***/",
+      "",
       "/* This implements the common visitor design pattern.",
       "   Tests show it to be slightly less efficient than the",
       "   instanceof method, but easier to use. ",
@@ -85,64 +88,78 @@ prData packageAbsyn user (cat, rules)
     | isList cat = ""
     | otherwise = unlines
         ["  public class " ++ identCat cat ++ "Visitor<R,A> implements "
-            ++ identCat cat ++ ".Visitor<R,A>"
+            ++ qual (identCat cat) ++ ".Visitor<R,A>"
         , "  {"
-        , concatMap (render . nest 4 . prRule packageAbsyn user) rules
+        , render $ vcat $ map (nest 4 . prRule packageAbsyn user) rules
         , "  }"
         ]
+  where
+  qual x = packageAbsyn ++ "." ++ x
 
 -- | traverses a standard rule.
--- >>> prRule "ABSYN" [] (Rule "EInt" undefined [Left (TokenCat "Integer"), Left (Cat "NT")])
+-- >>> prRule "ABSYN" [] $ Rule "EInt" undefined [Left (TokenCat "Integer"), Left (Cat "NT")] Parsable
 -- public R visit(ABSYN.EInt p, A arg)
--- { /* Code For EInt Goes Here */
+-- { /* Code for EInt goes here */
 --   //p.integer_;
 --   p.nt_.accept(new NTVisitor<R,A>(), arg);
 --   return null;
 -- }
 --
 -- It skips the internal category (indicating that a rule is not parsable)
--- >>> prRule "ABSYN" [] (Rule "EInt" undefined [Left (InternalCat), Left (TokenCat "Integer")])
+-- >>> prRule "ABSYN" [] $ Rule "EInt" undefined [Left (TokenCat "Integer")] Internal
 -- public R visit(ABSYN.EInt p, A arg)
--- { /* Code For EInt Goes Here */
+-- { /* Code for EInt goes here */
 --   //p.integer_;
 --   return null;
 -- }
 prRule :: String -> [UserDef] -> Rule -> Doc
-prRule packageAbsyn user (Rule fun _ cats)
+prRule packageAbsyn user (Rule fun _ cats _)
   | not (isCoercion fun || isDefinedRule fun) = vcat
     [ "public R visit(" <> text packageAbsyn <> "." <> fname <> " p, A arg)"
     , "{"
-    , nest 2 ( "/* Code For " <> fname <> " Goes Here */"
-            $$ vcat (map (prCat user) cats')
-            $$ "return null;" )
-    , "}" ]
+    , nest 2 $ vcat
+        [ "/* Code for " <> fname <> " goes here */"
+        , vcat $ map (prCat packageAbsyn user) cats'
+        , "return null;"
+        ]
+    , "}"
+    ]
   where
-    fname = text fun                            -- function name
-    cats' = filter ((/= InternalCat).fst) (lefts (numVars cats))  -- non-terminals in the rhs
-prRule _ _ _ = ""
+    fname = text fun              -- function name
+    cats' = map (second ("p." <>)) $ lefts $ numVars cats  -- non-terminals in the rhs
+prRule _ _ _ = empty
 
 -- | Traverses a class's instance variables.
--- >>> prCat [] (Cat "A", "a_")
+--
+-- >>> prCat "ABSYN" [] (Cat "A", "p.a_")
 -- p.a_.accept(new AVisitor<R,A>(), arg);
--- >>> prCat [] (TokenCat "Integer", "integer_")
+--
+-- >>> prCat "" [] (TokenCat "Integer", "p.integer_")
 -- //p.integer_;
--- >>> prCat [Cat "A"] (TokenCat "A", "a_")
+--
+-- >>> prCat "" ["A"] (TokenCat "A", "p.a_")
 -- //p.a_;
--- >>> prCat [Cat "A"] (TokenCat "A", "a_2")
+--
+-- >>> prCat "" ["A"] (TokenCat "A", "p.a_2")
 -- //p.a_2;
--- >>> prCat [] (ListCat (Cat "A"), "lista_")
--- for (A x: p.lista_)
--- { /* ... */ }
-prCat :: [UserDef]    -- ^ User defined tokens
-      -> (Cat, Doc)   -- ^ Variable category and name
-      -> Doc          -- ^ Code for visiting the variable
-prCat user (cat, nt)
-  | isTokenCat cat = "//" <> var <> ";"
-  | isList cat           = "for" <+> parens (text et <+> "x:" <+> var)
-                        $$ braces " /* ... */ "
-  | otherwise            = accept
+--
+-- >>> prCat "ABSYN" [] (ListCat (Cat "A"), "p.lista_")
+-- for (ABSYN.A x: p.lista_) {
+--   x.accept(new AVisitor<R,A>(), arg);
+-- }
+prCat :: String       -- ^ absyn package name.
+      -> [UserDef]    -- ^ User defined tokens.
+      -> (Cat, Doc)   -- ^ Variable category and name.
+      -> Doc          -- ^ Code for visiting the variable.
+prCat packageAbsyn user (cat, var) =
+  case cat of
+    TokenCat{}   -> "//" <> var <> ";"
+    ListCat cat' -> vcat
+      [ "for" <+> parens (text et <+> "x:" <+> var) <+> "{"
+      , nest 2 $ prCat packageAbsyn user (cat', "x")
+      , "}"
+      ]
+    _ -> var <> ".accept(new " <> text varType <> "Visitor<R,A>(), arg);"
   where
-      var = "p." <> nt
-      varType = typename (identCat (normCat cat)) user
-      accept = var <> ".accept(new " <> text varType <> "Visitor<R,A>(), arg);"
-      et = typename (show $normCatOfList cat) user
+    varType = typename "" user $ identCat $ normCat cat    -- no qualification here!
+    et      = typename packageAbsyn user $ identCat $ normCatOfList cat

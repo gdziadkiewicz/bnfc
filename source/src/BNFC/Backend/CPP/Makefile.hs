@@ -3,10 +3,10 @@ module BNFC.Backend.CPP.Makefile (makefile) where
 import BNFC.Backend.Common.Makefile
 import BNFC.PrettyPrint
 
-makefile :: String -> Doc
-makefile name = vcat
-    [ mkVar "CC" "g++"
-    , mkVar "CCFLAGS" "-g -W -Wall"
+makefile :: String -> String -> Doc
+makefile name basename = vcat
+    [ mkVar "CC" "g++ -g"
+    , mkVar "CCFLAGS" "--ansi -W -Wall -Wno-unused-parameter -Wno-unused-function -Wno-unneeded-internal-declaration"
     , ""
     , mkVar "FLEX" "flex"
     , mkVar "FLEX_OPTS" ("-P" ++ name)
@@ -26,12 +26,14 @@ makefile name = vcat
             [ name ++ e | e <- [".aux", ".log", ".pdf",".dvi", ".ps", ""]] ]
     , mkRule "distclean" ["clean"]
         [ "rm -f " ++ unwords
-            [ "Absyn.C", "Absyn.H", "Test.C", "Parser.C", "Parser.H", "Lexer.C",
-              "Skeleton.C", "Skeleton.H", "Printer.C", "Printer.H", "Makefile " ]
-            ++ name ++ ".l " ++ name ++ ".y " ++ name ++ ".tex "]
+            [ "Absyn.C", "Absyn.H", "Test.C", "Parser.C", "Parser.H", "ParserError.H", "Lexer.C",
+              "Skeleton.C", "Skeleton.H", "Printer.C", "Printer.H", basename,
+              name ++ ".l", name ++ ".y", name ++ ".tex"
+            ]
+        ]
     , mkRule testName [ "${OBJS}", "Test.o" ]
         [ "@echo \"Linking " ++ testName ++ "...\""
-        , "${CC} ${CCFLAGS} ${OBJS} Test.o -o " ++ testName ]
+        , "${CC} ${OBJS} Test.o -o " ++ testName ]
     , mkRule "Absyn.o" [ "Absyn.C", "Absyn.H" ]
         [ "${CC} ${CCFLAGS} -c Absyn.C" ]
     , mkRule "Lexer.C" [ name ++ ".l" ]

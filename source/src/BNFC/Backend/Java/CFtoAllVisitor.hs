@@ -15,7 +15,7 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA
 -}
 
 module BNFC.Backend.Java.CFtoAllVisitor (cf2AllVisitor) where
@@ -27,16 +27,16 @@ import BNFC.Backend.Common.NamedVariables
 
 
 cf2AllVisitor :: String -> String -> CF -> String
-cf2AllVisitor packageBase packageAbsyn cf =
-  unlines [
-           "package" +++ packageBase ++ ";",
-           "",
-           "import" +++ packageAbsyn ++ ".*;",
-           "",
-           "/** BNFC-Generated All Visitor */",
-           "public interface AllVisitor<R,A> extends",
-           intercalate ",\n" $ map ("  "++) is,
-           "{}"]
+cf2AllVisitor packageBase packageAbsyn cf = unlines $ concat
+  [ [ "package" +++ packageBase ++ ";"
+    , ""
+    , "/** BNFC-Generated All Visitor */"
+    , ""
+    , "public interface AllVisitor<R,A>" ++ if null is then "" else " extends"
+    ]
+  , [ intercalate ",\n" $ map ("  "++) is | not $ null is ]
+  , [ "{}" ]
+  ]
   where
     groups = [ g
         | g@(c,_) <- fixCoercions (ruleGroupsInternals cf), not (isList c) ]

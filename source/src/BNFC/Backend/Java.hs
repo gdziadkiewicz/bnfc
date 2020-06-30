@@ -17,7 +17,7 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA
 -}
 
 -------------------------------------------------------------------
@@ -68,12 +68,15 @@ import BNFC.PrettyPrint
 
 -- | This creates the Java files.
 makeJava :: SharedOptions -> CF -> MkFiles ()
-makeJava options@Options{..} cf = do
+makeJava opt = makeJava' opt{ lang = mkName javaReserved SnakeCase $ lang opt }
+  -- issue #212: make a legal package name, see also
+  -- https://docs.oracle.com/javase/tutorial/java/package/namingpkgs.html
+
+makeJava' :: SharedOptions -> CF -> MkFiles ()
+makeJava' options@Options{..} cf = do
      -- Create the package directories if necessary.
-    let packageBase  = case inPackage of
-                           Nothing -> lang
-                           Just p -> p ++ "." ++ lang
-        packageAbsyn = packageBase ++ "." ++ "Absyn"
+    let packageBase  = maybe id (+.+) inPackage lang
+        packageAbsyn = packageBase +.+ "Absyn"
         dirBase      = pkgToDir packageBase
         dirAbsyn     = pkgToDir packageAbsyn
         javaex str   = dirBase ++ str +.+ "java"
@@ -139,8 +142,8 @@ makeJava options@Options{..} cf = do
     lexmake      = makelexerdetails  (lexer parselexspec)
     rp           = (Options.linenumbers options)
 
-makefile ::  FilePath -> FilePath -> [String] -> ParserLexerSpecification -> Doc
-makefile  dirBase dirAbsyn absynFileNames jlexpar = vcat $
+makefile ::  FilePath -> FilePath -> [String] -> ParserLexerSpecification -> String -> Doc
+makefile  dirBase dirAbsyn absynFileNames jlexpar basename = vcat $
     makeVars [  ("JAVAC", "javac"),
                 ("JAVAC_FLAGS", "-sourcepath ."),
                 ( "JAVA", "java"),
@@ -211,8 +214,10 @@ makefile  dirBase dirAbsyn absynFileNames jlexpar = vcat $
                       , "Test.java"
                       ]
                     ++ dotJava (results parmake)
-                    ++ ["*.class"])
-        , " rm -f Makefile"
+                    ++ ["*.class"]
+                    ++ other_results lexmake
+                    ++ other_results parmake)
+        , " rm -f " ++ basename
         , " rmdir -p " ++ dirBase
         ]
     ]
@@ -225,6 +230,7 @@ makefile  dirBase dirAbsyn absynFileNames jlexpar = vcat $
       absynJavaClass    = unwords (dotClass absynFileNames)
       classes = prependPath dirBase lst
       lst = dotClass (results lexmake) ++ [ "PrettyPrinter.class", "Test.class"
+          , "VisitSkel.class"
           , "ComposVisitor.class", "AbstractVisitor.class"
           , "FoldVisitor.class", "AllVisitor.class"]++
            dotClass (results parmake) ++ ["Test.class"]
@@ -241,61 +247,80 @@ type TestClass = String
     -- ^ the CF bundle
     -> String
 
+-- | Record to name arguments of 'javaTest'.
+data JavaTestParams = JavaTestParams
+  { jtpImports            :: [Doc]
+      -- ^ List of imported packages.
+  , jtpErr                :: String
+      -- ^ Name of the exception thrown in case of parsing failure.
+  , jtpErrHand            :: (String -> [Doc])
+      -- ^ Handler for the exception thrown.
+  , jtpLexerConstruction  :: (Doc -> Doc -> Doc)
+      -- ^ Function formulating the construction of the lexer object.
+  , jtpParserConstruction :: (Doc -> Doc -> Doc)
+      -- ^ As above, for parser object.
+  , jtpShowAlternatives   :: ([Cat] -> [Doc])
+      -- ^ Pretty-print the names of the methods corresponding to entry points to the user.
+  , jtpInvocation         :: (Doc -> Doc -> Doc -> Doc -> Doc)
+      -- ^ Function formulating the invocation of the parser tool within Java.
+  , jtpErrMsg             :: String
+      -- ^ Error string output in consequence of a parsing failure.
+  }
+
 -- | Test class details for J(F)Lex + CUP
 cuptest :: TestClass
-cuptest =
-  javaTest
-    ["java_cup.runtime"]
-    "Throwable"
-    (const [])
-    (\x i -> x <> i <> ";")
-    (\x i -> x <> "(" <> i <> ", " <> i <> ".getSymbolFactory());")
-    showOpts
-    (\_ pabs enti ->
-        pabs <> "." <> enti <+> "ast = p."<> "p" <> enti
-             <> "();")
-    locs
-  where
-    locs = "At line \" + String.valueOf(t.l.line_num()) + \","
-            ++ " near \\\"\" + t.l.buff() + \"\\\" :"
-    showOpts _ = ["not available."]
-
-
+cuptest = javaTest $ JavaTestParams
+  { jtpImports            = ["java_cup.runtime"]
+  , jtpErr                = "Throwable"
+  , jtpErrHand            = const []
+  , jtpLexerConstruction  = \ x i -> x <> i <> ";"
+  , jtpParserConstruction = \ x i -> x <> "(" <> i <> ", " <> i <> ".getSymbolFactory());"
+  , jtpShowAlternatives   = const $ ["not available."]
+  , jtpInvocation         = \ _ pabs dat enti -> hcat [ pabs, ".", dat, " ast = p.p", enti, "();" ]
+  , jtpErrMsg             = unwords $
+      [ "At line \" + String.valueOf(t.l.line_num()) + \","
+      , "near \\\"\" + t.l.buff() + \"\\\" :"
+      ]
+  }
 
 -- | Test class details for ANTLR4
 antlrtest :: TestClass
-antlrtest =
-  javaTest
-    [ "org.antlr.v4.runtime","org.antlr.v4.runtime.atn"
-    , "org.antlr.v4.runtime.dfa","java.util"
-    ]
-    "TestError"
-    antlrErrorHandling
-    (\x i ->  vcat
-           [ x <> "(new ANTLRInputStream" <> i <>");"
-           , "l.addErrorListener(new BNFCErrorListener());"
-           ])
-    (\x i -> vcat
-           [x <> "(new CommonTokenStream(" <> i <>"));"
-           , "p.addErrorListener(new BNFCErrorListener());"
-           ])
-    showOpts
-    (\pbase pabs enti -> vcat
-           [
-           let rulename = getRuleName (show enti)
+antlrtest = javaTest $ JavaTestParams
+  { jtpImports =
+      [ "org.antlr.v4.runtime"
+      , "org.antlr.v4.runtime.atn"
+      , "org.antlr.v4.runtime.dfa"
+      , "java.util"
+      ]
+  , jtpErr =
+      "TestError"
+  , jtpErrHand =
+      antlrErrorHandling
+  , jtpLexerConstruction  =
+      \ x i -> vcat
+        [ x <> "(new ANTLRInputStream" <> i <>");"
+        , "l.addErrorListener(new BNFCErrorListener());"
+        ]
+  , jtpParserConstruction =
+      \ x i -> vcat
+        [ x <> "(new CommonTokenStream(" <> i <>"));"
+        , "p.addErrorListener(new BNFCErrorListener());"
+        ]
+  , jtpShowAlternatives   =
+      showOpts
+  , jtpInvocation         =
+      \ pbase pabs dat enti -> vcat
+         [
+           let rulename = getRuleName $ startSymbol $ render enti
                typename = text rulename
                methodname = text $ firstLowerCase rulename
            in
-               pbase <> "." <> typename <> "Context pc = p."
-                     <> methodname <> "();"
-               , "org.antlr.v4.runtime.Token _tkn = p.getInputStream()"
-                 <> ".getTokenSource().nextToken();"
-               , "if(_tkn.getType() != -1) throw new TestError"
-                 <> "(\"Stream does not end with EOF\","
-                 <> "_tkn.getLine(),_tkn.getCharPositionInLine());",
-               pabs <> "." <> enti <+> "ast = pc.result;"
-           ])
-           "At line \" + e.line + \", column \" + e.column + \" :"
+               pbase <> "." <> typename <> "Context pc = p." <> methodname <> "();"
+         , pabs <> "." <> dat <+> "ast = pc.result;"
+         ]
+  , jtpErrMsg             =
+      "At line \" + e.line + \", column \" + e.column + \" :"
+  }
   where
     showOpts [] = []
     showOpts (x:xs)
@@ -412,6 +437,10 @@ data MakeFileDetails = MakeDetails
       -- | list of names (without extension!) of files resulting from the
       -- application of the tool which are relevant to a make rule
     , results             :: [String]
+      -- | list of names of files resulting from the application of
+      -- the tool which are irrelevant to the make rules but need to
+      -- be cleaned
+    , other_results       :: [String]
       -- | if true, the files are moved to the base directory, otherwise
       -- they are left where they are
     , moveresults         :: Bool
@@ -434,6 +463,7 @@ jlexmakedetails = MakeDetails
     , toolversion         = "1.2.6."
     , supportsEntryPoints = False
     , results             = ["Yylex"]
+    , other_results       = []
     , moveresults         = False
     }
 
@@ -449,9 +479,10 @@ cupmakedetails rp = MakeDetails
     , filename            = "_cup"
     , fileextension       = "cup"
     , toolname            = "CUP"
-    , toolversion         = "0.10k"
+    , toolversion         = "0.11b"
     , supportsEntryPoints = False
     , results             = ["parser", "sym"]
+    , other_results       = []
     , moveresults         = True
     }
   where
@@ -475,6 +506,7 @@ antlrmakedetails l = MakeDetails
     , toolversion         = "4.5.1"
     , supportsEntryPoints = True
     , results             = [l]
+    , other_results       = map (l ++) [".tokens","BaseListener.java","Listener.java"]
     , moveresults         = False
     }
 
@@ -528,97 +560,88 @@ partialParserGoals dbas (x:rest) =
         : partialParserGoals dbas rest
 
 -- | Creates the Test.java class.
-javaTest :: [Doc]
-            -- ^ list of imported packages
-            -> String
-            -- ^ name of the exception thrown in case of parsing failure
-            -> (String -> [Doc])
-            -- ^ handler for the exception thrown
-            -> (Doc -> Doc -> Doc)
-            -- ^ function formulating the construction of the lexer object
-            -> (Doc -> Doc -> Doc)
-            -- ^ as above, for parser object
-            -> ([Cat] -> [Doc])
-            -- ^ Function processing the names of the methods corresponding
-            -- to entry points
-            -> (Doc -> Doc -> Doc -> Doc)
-            -- ^ function formulating the invocation of the parser tool within
-            -- Java
-            -> String
-            -- ^ error string output in consequence of a parsing failure
-            -> TestClass
-javaTest imports
+javaTest :: JavaTestParams -> TestClass
+javaTest (JavaTestParams
+    imports
     err
     errhand
     lexerconstruction
     parserconstruction
     showOpts
     invocation
-    errmsg
+    errmsg)
     lexer
     parser
     packageBase
     packageAbsyn
     cf =
-    render $ vcat $
-        [ "package" <+> text packageBase <> ";"
+    render $ vcat $ concat $
+      [ [ "package" <+> text packageBase <> ";"
+        , ""
         , "import" <+> text packageBase <> ".*;"
-        , "import" <+> text packageAbsyn <> ".*;"
         , "import java.io.*;"
         ]
-        ++ map importfun imports
-        ++ errhand err
-        ++[ ""
+      , map importfun imports
+      , [ "" ]
+      , errhand err
+      , [ ""
         , "public class Test"
         , codeblock 2
             [ lx <+> "l;"
             , px <+> "p;"
             , ""
             , "public Test(String[] args)"
-            , codeblock 2 [
-                "try"
-                , codeblock 2 [ "Reader input;"
-                    , "if (args.length == 0)"
-                       <> "input = new InputStreamReader(System.in);"
+            , codeblock 2
+                [ "try"
+                , codeblock 2
+                    [ "Reader input;"
+                    , "if (args.length == 0) input = new InputStreamReader(System.in);"
                     , "else input = new FileReader(args[0]);"
-                    , "l = new "<>lexerconstruction lx "(input)"
+                    , "l = new " <> lexerconstruction lx "(input)"
                     ]
                 , "catch(IOException e)"
-                , codeblock 2 [ "System.err.println"
-                        <>"(\"Error: File not found: \" + args[0]);"
+                , codeblock 2
+                    [ "System.err.println(\"Error: File not found: \" + args[0]);"
                     , "System.exit(1);"
                     ]
                 , "p = new "<> parserconstruction px "l"
                 ]
             , ""
-            , "public" <+> text packageAbsyn <> "." <> absentity
-                <+>"parse() throws Exception"
-            , codeblock 2
-                [ "/* The default parser is the first-defined entry point. */"
-                , "/* Other options are: */"
-                , "/* " <> fsep (punctuate "," (showOpts (tail eps))) <> " */"
-                , invocation px (text packageAbsyn) absentity
-                , printOuts [ "\"Parse Succesful!\""
-                    , "\"[Abstract Syntax]\""
-                    , "PrettyPrinter.show(ast)"
-                    , "\"[Linearized Tree]\""
-                    , "PrettyPrinter.print(ast)"
-                    ]
-                , "return ast;"
+            , "public" <+> text packageAbsyn <> "." <> dat
+                <+> "parse() throws Exception"
+            , codeblock 2 $ concat
+                [ [ "/* The default parser is the first-defined entry point. */" ]
+                , unlessNull (drop 1 eps) $ \ eps' ->
+                  [ "/* Other options are: */"
+                  , "/* " <> fsep (punctuate "," (showOpts eps')) <> " */"
+                  ]
+                , [ invocation px (text packageAbsyn) dat absentity
+                  , printOuts
+                     [ "\"Parse Succesful!\""
+                     , "\"[Abstract Syntax]\""
+                     , "PrettyPrinter.show(ast)"
+                     , "\"[Linearized Tree]\""
+                     , "PrettyPrinter.print(ast)"
+                     ]
+                  , "return ast;"
+                  ]
                 ]
             , ""
             , "public static void main(String args[]) throws Exception"
-            , codeblock 2 [ "Test t = new Test(args);"
+            , codeblock 2
+                [ "Test t = new Test(args);"
                 , "try"
                 , codeblock 2 [ "t.parse();" ]
-                ,"catch("<>text err<+>"e)"
-                , codeblock 2 [ "System.err.println(\""<>text errmsg<>"\");"
+                ,"catch(" <> text err <+> "e)"
+                , codeblock 2
+                    [ "System.err.println(\"" <> text errmsg <> "\");"
                     , "System.err.println(\"     \" + e.getMessage());"
                     , "System.exit(1);"
                     ]
                 ]
             ]
         ]
+      ]
     where
       printOuts x    = vcat $ map javaPrintOut (messages x)
       messages x     = "" : intersperse "" x
@@ -626,7 +649,8 @@ javaTest imports
       importfun x    = "import" <+> x <> ".*;"
       lx             = text lexer
       px             = text parser
-      absentity      = text $ show def
+      dat            = text $ identCat $ normCat def  -- Use for AST types.
+      absentity      = text $ identCat def            -- Use for parser/printer name.
       eps            = allEntryPoints cf
       def            = head eps
 

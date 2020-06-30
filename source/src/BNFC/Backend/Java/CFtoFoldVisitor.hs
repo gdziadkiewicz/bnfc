@@ -17,7 +17,7 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA
 -}
 
 module BNFC.Backend.Java.CFtoFoldVisitor (cf2FoldVisitor) where
@@ -35,11 +35,6 @@ cf2FoldVisitor :: String -> String -> CF -> String
 cf2FoldVisitor packageBase packageAbsyn cf =
   unlines
     ["package" +++ packageBase ++ ";",
-     "",
-     "import" +++ packageAbsyn ++ ".*;",
-     "import java.util.Collections;",
-     "import java.util.List;",
-     "import java.util.ArrayList;",
      "",
      "/** BNFC-Generated Fold Visitor */",
      "public abstract class FoldVisitor<R,A> implements AllVisitor<R,A> {",
@@ -61,7 +56,7 @@ prData packageAbsyn user (cat, rules) = unlines
 
 --traverses a standard rule.
 prRule :: String -> [UserDef] -> Cat -> Rule -> String
-prRule packageAbsyn user _ (Rule fun _ cats)
+prRule packageAbsyn user _ (Rule fun _ cats _)
     | not (isCoercion fun || isDefinedRule fun) = unlines $
   ["    public R visit(" ++ cls ++ " p, A arg) {",
    "      R r = leaf(arg);"]
@@ -69,27 +64,28 @@ prRule packageAbsyn user _ (Rule fun _ cats)
   ++ ["      return r;",
       "    }"]
    where
-    cats' = filter ((/= InternalCat) . fst) (lefts (numVars cats))
+    cats' = lefts $ numVars cats
     cls = packageAbsyn ++ "." ++ fun
-    visitVars = lines $ render $ vcat $ map (prCat user) cats'
+    visitVars = lines $ render $ vcat $ map (prCat packageAbsyn user) cats'
 prRule  _ _ _ _ = ""
 
 -- | Traverses a class's instance variables.
--- >>> prCat [Cat "A"] (Cat "A", "a_")
+-- >>> prCat "" ["A"] (Cat "A", "a_")
 -- <BLANKLINE>
--- >>> prCat [] (ListCat (Cat "Integer"), "listinteger_")
+-- >>> prCat "" [] (ListCat (Cat "Integer"), "listinteger_")
 -- <BLANKLINE>
--- >>> prCat [] (ListCat (Cat "N"), "listn_")
--- for (N x : p.listn_)
+-- >>> prCat "absyn" [] (ListCat (Cat "N"), "listn_")
+-- for (absyn.N x : p.listn_)
 -- {
 --   r = combine(x.accept(this, arg), r, arg);
 -- }
--- >>> prCat [] (Cat "N", "n_")
+-- >>> prCat "absyn" [] (Cat "N", "n_")
 -- r = combine(p.n_.accept(this, arg), r, arg);
-prCat :: [UserDef]
+prCat :: String     -- ^ Absyn package name.
+      -> [UserDef]  -- ^ User-defined token categories.
       -> (Cat, Doc) -- ^ Variable category and name
       -> Doc        -- ^ Code for visiting the variable
-prCat user (cat,nt)
+prCat packageAbsyn user (cat,nt)
     | isBasicType user varType || (isList cat && isBasicType user et) = empty
     | isList cat = vcat
         [ "for (" <> text et <> " x : " <> var <> ")"
@@ -97,10 +93,9 @@ prCat user (cat,nt)
     | otherwise = "r = combine(" <> var <> ".accept(this, arg), r, arg);"
       where
       var = "p." <> nt
-      varType = typename (identCat (normCat cat)) user
-      et      = typename (show$normCatOfList cat) user
+      varType = typename packageAbsyn user $ identCat $ normCat cat
+      et      = typename packageAbsyn user $ identCat $ normCatOfList cat
 
 --Just checks if something is a basic or user-defined type.
 isBasicType :: [UserDef] -> String -> Bool
-isBasicType user v = v `elem` (map show user ++ ["Integer","Character","String","Double"])
-
+isBasicType user v = v `elem` (user ++ ["Integer","Character","String","Double"])

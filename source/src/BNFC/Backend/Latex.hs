@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-
     BNF Converter: Latex Generator
     Copyright (C) 2004  Author:  Markus Forberg, Aarne Ranta
@@ -14,12 +15,14 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA
 -}
 module BNFC.Backend.Latex where
 
 import Data.List
+#if !(MIN_VERSION_base(4,8,0))
 import Data.Monoid
+#endif
 import System.FilePath ((<.>),replaceExtension)
 import Text.Printf
 
@@ -41,20 +44,21 @@ makeLatex opts cf = do
 
 -- | Create a makefile for the given tex file
 --
--- >>> makefile "myFile.tex"
--- all: myFile.pdf
+-- >>> makefile "myFile.tex" "Makefile"
+-- all : myFile.pdf
 -- <BLANKLINE>
--- myFile.pdf: myFile.tex
+-- myFile.pdf : myFile.tex
 -- 	pdflatex myFile.tex
 -- <BLANKLINE>
--- clean:
+-- clean :
 -- 	-rm myFile.pdf myFile.aux myFile.log
 -- <BLANKLINE>
--- cleanall: clean
+-- cleanall : clean
 -- 	-rm Makefile myFile.tex
 -- <BLANKLINE>
-makefile :: String -> Doc
-makefile texfile = vcat
+--
+makefile :: String -> String -> Doc
+makefile texfile basename = vcat
     [ Makefile.mkRule "all" [pdffile]
         []
     , Makefile.mkRule pdffile [texfile]
@@ -62,7 +66,7 @@ makefile texfile = vcat
     , Makefile.mkRule "clean" []
         [ unwords [ "-rm", pdffile, auxfile, logfile ]]
     , Makefile.mkRule "cleanall" ["clean"]
-        [ "-rm Makefile " ++ texfile ]
+        [ unwords [ "-rm", basename, texfile ]]
     ]
   where pdffile = replaceExtension texfile "pdf"
         auxfile = replaceExtension texfile "aux"
@@ -119,32 +123,33 @@ prtIdentifiers =
 
 prtLiterals :: String -> CF -> String
 prtLiterals _ cf =
-  unlines $ map stringLit $
-    filter (`notElem` [Cat "Ident"]) $
-      literals cf
+  unlines . concat . intersperse [""] . map stringLit . filter (/= catIdent) $ literals cf
 
-stringLit :: Cat -> String
-stringLit cat = unlines $ case cat of
-  Cat "Char" -> ["Character literals \\nonterminal{Char}\\ have the form",
-                 "\\terminal{'}$c$\\terminal{'}, where $c$ is any single character.",
-                 ""
-                ]
-  Cat "String" -> ["String literals \\nonterminal{String}\\ have the form",
-                 "\\terminal{\"}$x$\\terminal{\"}, where $x$ is any sequence of any characters",
-                 "except \\terminal{\"}\\ unless preceded by \\verb6\\6.",
-                 ""]
-  Cat "Integer" -> ["Integer literals \\nonterminal{Int}\\ are nonempty sequences of digits.",
-                 ""]
-  Cat "Double" -> ["Double-precision float literals \\nonterminal{Double}\\ have the structure",
-                   "indicated by the regular expression" +++
-                      "$\\nonterminal{digit}+ \\mbox{{\\it `.'}} \\nonterminal{digit}+ (\\mbox{{\\it `e'}} \\mbox{{\\it `-'}}? \\nonterminal{digit}+)?$ i.e.\\",
-                   "two sequences of digits separated by a decimal point, optionally",
-                   "followed by an unsigned or negative exponent.",
-                   ""]
+stringLit :: TokenCat -> [String]
+stringLit = \case
+  "Char" ->
+    [ "Character literals \\nonterminal{Char}\\ have the form"
+    , "\\terminal{'}$c$\\terminal{'}, where $c$ is any single character."
+    ]
+  "String" ->
+    [ "String literals \\nonterminal{String}\\ have the form"
+    , "\\terminal{\"}$x$\\terminal{\"}, where $x$ is any sequence of any characters"
+    , "except \\terminal{\"}\\ unless preceded by \\verb6\\6."
+    ]
+  "Integer" ->
+    [ "Integer literals \\nonterminal{Int}\\ are nonempty sequences of digits."
+    ]
+  "Double" ->
+    [ "Double-precision float literals \\nonterminal{Double}\\ have the structure"
+    , "indicated by the regular expression" +++
+      "$\\nonterminal{digit}+ \\mbox{{\\it `.'}} \\nonterminal{digit}+ (\\mbox{{\\it `e'}} \\mbox{{\\it `-'}}? \\nonterminal{digit}+)?$ i.e.\\"
+    , "two sequences of digits separated by a decimal point, optionally"
+    , "followed by an unsigned or negative exponent."
+    ]
   _ -> []
 
 prtOwnToken (name,reg) = unlines
-  [ show name +++ "literals are recognized by the regular expression",
+  [ name +++ "literals are recognized by the regular expression",
    "\\(" ++
    latexRegExp reg ++
    "\\)"
@@ -204,9 +209,9 @@ prtBNF :: String -> CF -> String
 prtBNF name cf = unlines
   [ "\\section*{The syntactic structure of " ++ name ++ "}"
   , ""
-  , "Non-terminals are enclosed between $\\langle$ and $\\rangle$. "
-  , "The symbols " ++ arrow ++ " (production), " ++ delimiter ++ " (union) "
-  , "and " ++ empty ++ " (empty rule) belong to the BNF notation. "
+  , "Non-terminals are enclosed between $\\langle$ and $\\rangle$."
+  , "The symbols " ++ arrow ++ " (production), " ++ delimiter ++ " (union)"
+  , "and " ++ empty ++ " (empty rule) belong to the BNF notation."
   , "All other symbols are terminals.\\\\"
   , prtRules (ruleGroups cf)
   ]
@@ -287,7 +292,8 @@ beginDocument name = unlines
  [ "%This Latex file is machine-generated by the BNF-converter"
  , ""
  , "\\documentclass[a4paper,11pt]{article}"
- -- "\\usepackage{isolatin1}"
+ , "\\usepackage[T1]{fontenc}"
+ , "\\usepackage[utf8x]{inputenc}"
  , "\\setlength{\\parindent}{0mm}"
  , "\\setlength{\\parskip}{1mm}"
  , ""

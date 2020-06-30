@@ -14,22 +14,26 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA
 -}
 
 module BNFC.Backend.CPP.NoSTL (makeCppNoStl) where
+
+import Data.Char
+import Data.List (nub)
+import qualified Data.Map as Map
 
 import BNFC.Utils
 import BNFC.CF
 import BNFC.Options
 import BNFC.Backend.Base
+import BNFC.Backend.C.CFtoBisonC (unionBuiltinTokens)
 import BNFC.Backend.CPP.Makefile
 import BNFC.Backend.CPP.NoSTL.CFtoCPPAbs
 import BNFC.Backend.CPP.NoSTL.CFtoFlex
 import BNFC.Backend.CPP.NoSTL.CFtoBison
-import BNFC.Backend.CPP.NoSTL.CFtoCVisitSkel
+import BNFC.Backend.CPP.STL.CFtoCVisitSkelSTL
 import BNFC.Backend.CPP.PrettyPrinter
-import Data.Char
 import qualified BNFC.Backend.Common.Makefile as Makefile
 
 makeCppNoStl :: SharedOptions -> CF -> MkFiles ()
@@ -41,9 +45,9 @@ makeCppNoStl opts cf = do
     mkfile (name ++ ".l") flex
     let bison = cf2Bison name cf env
     mkfile (name ++ ".y") bison
-    let header = mkHeaderFile cf (allCats cf) (allEntryPoints cf) env
+    let header = mkHeaderFile cf (allParserCats cf) (allEntryPoints cf) (Map.elems env)
     mkfile "Parser.H" header
-    let (skelH, skelC) = cf2CVisitSkel cf
+    let (skelH, skelC) = cf2CVisitSkel False Nothing cf
     mkfile "Skeleton.H" skelH
     mkfile "Skeleton.C" skelC
     let (prinH, prinC) = cf2CPPPrinter False Nothing cf
@@ -107,10 +111,10 @@ cpptest cf =
     "    }",
     "  } else input = stdin;",
     "  /* The default entry point is used. For other options see Parser.H */",
-    "  " ++ def ++ " *parse_tree = p" ++ def ++ "(input);",
+    "  " ++ dat ++ " *parse_tree = p" ++ def ++ "(input);",
     "  if (parse_tree)",
     "  {",
-    "    printf(\"\\nParse Succesful!\\n\");",
+    "    printf(\"\\nParse Successful!\\n\");",
     "    if (!quiet) {",
     "      printf(\"\\n[Abstract Syntax]\\n\");",
     "      ShowAbsyn *s = new ShowAbsyn();",
@@ -126,50 +130,52 @@ cpptest cf =
     ""
    ]
   where
-   def = show (head (allEntryPoints cf))
+   cat = head (allEntryPoints cf)
+   dat = identCat $ normCat cat
+   def = identCat cat
 
-mkHeaderFile cf cats eps env = unlines
- [
-  "#ifndef PARSER_HEADER_FILE",
-  "#define PARSER_HEADER_FILE",
-  "",
-  concatMap mkForwardDec cats,
-  "typedef union",
-  "{",
-  "  int int_;",
-  "  char char_;",
-  "  double double_;",
-  "  char* string_;",
-  concatMap mkVar cats ++ "} YYSTYPE;",
-  "",
-  "#define _ERROR_ 258",
-  mkDefines (259 :: Int) env,
-  "extern YYSTYPE yylval;",
-  concatMap mkFunc eps,
-  "",
-  "#endif"
- ]
- where
-  mkForwardDec s | normCat s == s = "class " ++ identCat s ++ ";\n"
-  mkForwardDec _ = ""
-  mkVar s | normCat s == s = "  " ++ identCat s ++"*" +++ map toLower (identCat s) ++ "_;\n"
-  mkVar _ = ""
+mkHeaderFile cf cats eps env = unlines $ concat
+  [ [ "#ifndef PARSER_HEADER_FILE"
+    , "#define PARSER_HEADER_FILE"
+    , ""
+    ]
+  , map mkForwardDec $ nub $ map normCat cats
+  , [ "typedef union"
+    , "{"
+    ]
+  , map ("  " ++) unionBuiltinTokens
+  , concatMap mkVar cats
+  , [ "} YYSTYPE;"
+    , ""
+    , "#define _ERROR_ 258"
+    , mkDefines (259 :: Int) env
+    , "extern YYSTYPE yylval;"
+    , ""
+    ]
+  , map mkFunc eps
+  , [ ""
+    , "#endif"
+    ]
+  ]
+  where
+  mkForwardDec s = "class " ++ identCat s ++ ";"
+  mkVar s | normCat s == s = [ "  " ++ identCat s ++"*" +++ map toLower (identCat s) ++ "_;" ]
+  mkVar _ = []
   mkDefines n [] = mkString n
-  mkDefines n ((_,s):ss) = "#define " ++ s +++ show n ++ "\n" ++ mkDefines (n+1) ss
-  mkString n =  if isUsedCat cf catString
+  mkDefines n (s:ss) = "#define " ++ s +++ show n ++ "\n" ++ mkDefines (n+1) ss
+  mkString n =  if isUsedCat cf (TokenCat catString)
    then ("#define _STRING_ " ++ show n ++ "\n") ++ mkChar (n+1)
    else mkChar n
-  mkChar n =  if isUsedCat cf catChar
+  mkChar n =  if isUsedCat cf (TokenCat catChar)
    then ("#define _CHAR_ " ++ show n ++ "\n") ++ mkInteger (n+1)
    else mkInteger n
-  mkInteger n =  if isUsedCat cf catInteger
+  mkInteger n =  if isUsedCat cf (TokenCat catInteger)
    then ("#define _INTEGER_ " ++ show n ++ "\n") ++ mkDouble (n+1)
    else mkDouble n
-  mkDouble n =  if isUsedCat cf catDouble
+  mkDouble n =  if isUsedCat cf (TokenCat catDouble)
    then ("#define _DOUBLE_ " ++ show n ++ "\n") ++ mkIdent(n+1)
    else mkIdent n
-  mkIdent n =  if isUsedCat cf catIdent
+  mkIdent n =  if isUsedCat cf (TokenCat catIdent)
    then "#define _IDENT_ " ++ show n ++ "\n"
    else ""
-  mkFunc s | normCat s == s = identCat s ++ "*" +++ "p" ++ identCat s ++ "(FILE *inp);\n"
-  mkFunc _ = ""
+  mkFunc s = identCat (normCat s) ++ "*" +++ "p" ++ identCat s ++ "(FILE *inp);"

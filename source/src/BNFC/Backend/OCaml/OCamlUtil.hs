@@ -14,8 +14,10 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA
 -}
+
+{-# LANGUAGE LambdaCase #-}
 
 module BNFC.Backend.OCaml.OCamlUtil where
 
@@ -26,12 +28,22 @@ import Data.Char (toLower, toUpper)
 -- Translate Haskell types to OCaml types
 -- Note: OCaml (data-)types start with lowercase letter
 fixType :: Cat -> String
-fixType (ListCat c) = fixType c +++ "list"
-fixType (TokenCat "Integer") = "int"
-fixType (TokenCat "Double") = "float"
-fixType cat = let c:cs = show cat in
-                let ls = toLower c : cs in
-                  if (elem ls reservedOCaml) then (ls ++ "T") else ls
+fixType = fixTypeQual ""
+
+fixTypeQual :: String -- ^ Module name (or empty string for no qualification).
+  -> Cat -> String
+fixTypeQual m = \case
+  ListCat c -> fixTypeQual m c +++ "list"
+  -- unqualified base types
+  TokenCat "Integer" -> "int"
+  TokenCat "Double"  -> "float"
+  TokenCat "String"  -> "string"
+  TokenCat "Char"    -> "char"
+  cat -> if null m then base else concat [ m, ".", base ]
+    where
+    c:cs = identCat cat
+    ls   = toLower c : cs
+    base = if ls `elem` reservedOCaml then ls ++ "T" else ls
 
 -- as fixType, but leave first character in upper case
 fixTypeUpper :: Cat -> String
@@ -48,9 +60,31 @@ reservedOCaml = [
     "functor","if","in","include","inherit","initializer",
     "land","lazy","let","list","lor","lsl","lsr",
     "lxor","match","method","mod","module","mutable",
-    "new","object","of","open","or","private",
-    "rec","sig","struct","then","to","true",
-    "try","type","val","virtual","when","while","with"]
+    "new","nonrec","object","of","open","or",
+    "private","rec","sig","struct","then","to",
+    "true","try","type","val","virtual","when",
+    "while","with"]
+
+-- | Keywords of @ocamllex@.
+reservedOCamlLex :: [String]
+reservedOCamlLex =
+  [ "and"
+  , "as"
+  , "eof"
+  , "let"
+  , "parse"
+  , "refill"
+  , "rule"
+  , "shortest"
+  ]
+
+-- | Heuristics to produce name for ocamllex token definition that
+-- does not clash with the ocamllex keywords.
+ocamlTokenName :: String -> String
+ocamlTokenName x0
+  | x `elem` reservedOCamlLex = x ++ "_"
+  | otherwise                 = x
+  where x = mapHead toLower x0
 
 mkTuple :: [String] -> String
 mkTuple [] = ""
@@ -67,3 +101,9 @@ mutualDefs defs = case defs of
      []   -> []
      [d]  -> ["let rec" +++ d]
      d:ds -> ("let rec" +++ d) : map ("and" +++) ds
+
+-- | Escape @"@ and @\@.  TODO: escape unprintable characters!?
+mkEsc :: String -> String
+mkEsc s = "\"" ++ concatMap f s ++ "\""
+  where
+  f x = if x `elem` ['"','\\'] then "\\" ++ [x] else [x]

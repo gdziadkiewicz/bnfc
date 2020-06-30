@@ -16,7 +16,7 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA
 -}
 
 
@@ -82,7 +82,6 @@ cf2JavaPrinter packageBase packageAbsyn cf =
     groups = fixCoercions (ruleGroupsInternals cf)
     header = unlines [
       "package" +++ packageBase ++ ";",
-      "import" +++ packageAbsyn ++ ".*;",
       "",
       "public class PrettyPrinter",
       "{",
@@ -96,12 +95,12 @@ cf2JavaPrinter packageBase packageAbsyn cf =
       ]
     footer = unlines [ --later only include used categories
       "  private static void pp(Integer n, int _i_) { buf_.append(n); buf_.append(\" \"); }",
-      "  private static void pp(Double d, int _i_) { buf_.append(d); buf_.append(\" \"); }",
+      "  private static void pp(Double d, int _i_) { buf_.append(String.format(java.util.Locale.ROOT, \"%.15g \", d)); }",
       "  private static void pp(String s, int _i_) { buf_.append(s); buf_.append(\" \"); }",
       "  private static void pp(Character c, int _i_) { buf_.append(\"'\" + c.toString() + \"'\"); buf_.append(\" \"); }",
       "  private static void sh(Integer n) { render(n.toString()); }",
-      "  private static void sh(Double d) { render(d.toString()); }",
-      "  private static void sh(Character c) { render(c.toString()); }",
+      "  private static void sh(Double d) { render(String.format(java.util.Locale.ROOT, \"%.15g\", d)); }",
+      "  private static void sh(Character c) { render(\"'\" + c.toString() + \"'\"); }",
       "  private static void sh(String s) { printQuoted(s); }",
       "  private static void printQuoted(String s) { render(\"\\\"\" + s + \"\\\"\"); }",
       "  private static void indent()",
@@ -109,22 +108,29 @@ cf2JavaPrinter packageBase packageAbsyn cf =
       "    int n = _n_;",
       "    while (n > 0)",
       "    {",
-      "      buf_.append(\" \");",
+      "      buf_.append(\' \');",
       "      n--;",
       "    }",
       "  }",
       "  private static void backup()",
       "  {",
-      "     if (buf_.charAt(buf_.length() - 1) == ' ') {",
-      "      buf_.setLength(buf_.length() - 1);",
-      "    }",
+      "    int prev = buf_.length() - 1;",
+      "    if (buf_.charAt(prev) == ' ')",
+      "      buf_.setLength(prev);",
       "  }",
       "  private static void trim()",
       "  {",
-      "     while (buf_.length() > 0 && buf_.charAt(0) == ' ')",
-      "        buf_.deleteCharAt(0); ",
-      "    while (buf_.length() > 0 && buf_.charAt(buf_.length()-1) == ' ')",
-      "        buf_.deleteCharAt(buf_.length()-1);",
+      "    // Trim initial spaces",
+      "    int end = 0;",
+      "    int len = buf_.length();",
+      "    while (end < len && buf_.charAt(end) == ' ')",
+      "      end++; ",
+      "    buf_.delete(0, end);",
+      "    // Trim trailing spaces",
+      "    end = buf_.length();",
+      "    while (end > 0 && buf_.charAt(end-1) == ' ')",
+      "      end--; ",
+      "    buf_.setLength(end);",
       "  }",
       "  private static int _n_ = 0;",
       "  private static StringBuilder buf_ = new StringBuilder(INITIAL_BUFFER_SIZE);",
@@ -180,6 +186,11 @@ prRender = unlines
       "       indent();",
       "    }",
       "    else if (s.equals(\"\")) return;",
+      "    else if (s.trim().equals(\"\"))",
+      "    {",
+      "       backup();",
+      "       buf_.append(s);",
+      "    }",
       "    else",
       "    {",
       "       buf_.append(s);",
@@ -190,11 +201,11 @@ prRender = unlines
 
 prEntryPoints :: String -> CF -> String
 prEntryPoints packageAbsyn cf =
-    msg ++ concatMap prEntryPoint (allCats cf) ++ msg2
+    msg ++ concatMap prEntryPoint (allCatsNorm cf) ++ msg2
  where
   msg = "  //  print and show methods are defined for each category.\n"
   msg2 = "  /***   You shouldn't need to change anything beyond this point.   ***/\n"
-  prEntryPoint cat | normCat cat == cat = unlines
+  prEntryPoint cat = unlines
    [
     "  public static String print(" ++ packageAbsyn ++ "." ++ cat' ++ " foo)",
     "  {",
@@ -214,7 +225,6 @@ prEntryPoints packageAbsyn cf =
    ]
    where
     cat' = identCat cat
-  prEntryPoint _ = ""
 
 prData :: String ->  [UserDef] -> (Cat, [Rule]) -> String
 prData packageAbsyn user (cat, rules) = unlines k
@@ -224,7 +234,7 @@ prData packageAbsyn user (cat, rules) = unlines k
            ["  private static void pp(" ++ packageAbsyn ++ "."
                 ++ identCat (normCat cat) +++ "foo, int _i_)"
             , "  {"
-            , render $ nest 5 $ prList user cat rules <> "  }"
+            , render $ nest 5 $ prList packageAbsyn user cat rules <> "  }"
            ]
            else --not a list
            [
@@ -238,7 +248,7 @@ prData packageAbsyn user (cat, rules) = unlines k
 
 
 prRule :: String -> Rule -> String
-prRule packageAbsyn r@(Rule fun _c cats) | not (isCoercion fun || isDefinedRule fun) = concat
+prRule packageAbsyn r@(Rule fun _c cats _) | not (isCoercion fun || isDefinedRule fun) = concat
     [ "    if (foo instanceof" +++ packageAbsyn ++ "." ++ fun ++ ")\n"
     , "    {\n"
     , "       " ++ packageAbsyn ++ "." ++ fun +++ fnm +++ "= ("
@@ -263,8 +273,8 @@ prRule _nm _ = ""
 -- |
 --
 -- >>> let lfoo = ListCat (Cat "Foo")
--- >>> prList [] lfoo [Rule "[]" lfoo [], Rule "(:)" lfoo [Left (Cat "Foo"), Right ".", Left lfoo]]
--- for (java.util.Iterator<Foo> it = foo.iterator(); it.hasNext();)
+-- >>> prList "absyn" [] lfoo [Rule "[]" lfoo [] Parsable, Rule "(:)" lfoo [Left (Cat "Foo"), Right ".", Left lfoo] Parsable]
+-- for (java.util.Iterator<absyn.Foo> it = foo.iterator(); it.hasNext();)
 -- {
 --   pp(it.next(), _i_);
 --   if (it.hasNext()) {
@@ -274,8 +284,8 @@ prRule _nm _ = ""
 --   }
 -- }
 
-prList :: [UserDef] -> Cat -> [Rule] -> Doc
-prList user c rules =
+prList :: String -> [UserDef] -> Cat -> [Rule] -> Doc
+prList packageAbsyn user c rules =
     "for (java.util.Iterator<" <> et <> "> it = foo.iterator(); it.hasNext();)"
     $$ codeblock 2
         [ "pp(it.next(), _i_);"
@@ -287,7 +297,7 @@ prList user c rules =
         , "}"
         ]
    where
-    et = text $ cat2JavaType user $ normCatOfList c
+    et = text $ typename packageAbsyn user $ identCat $ normCatOfList c
     sep = escapeChars $ getCons rules
     optsep = if hasOneFunc rules then "" else sep
     renderSep x = "render(\"" <> text x <>"\")"
@@ -299,8 +309,6 @@ prList user c rules =
 -- >>> prCat "F" (Left (TokenCat "String", "string_"))
 --        printQuoted(F.string_);
 -- <BLANKLINE>
--- >>> prCat "F" (Left (InternalCat, "#_"))
--- <BLANKLINE>
 -- >>> prCat "F" (Left (Cat "Abc", "abc_"))
 --        pp(F.abc_, 0);
 -- <BLANKLINE>
@@ -308,7 +316,6 @@ prCat :: Doc -> Either (Cat, Doc) String -> Doc
 prCat _ (Right t) = nest 7 ("render(\"" <> text(escapeChars t) <> "\");\n")
 prCat fnm (Left (TokenCat "String", nt))
     = nest 7 ("printQuoted(" <> fnm <> "." <> nt <> ");\n")
-prCat _ (Left (InternalCat, _)) = empty
 prCat fnm (Left (cat, nt))
     = nest 7 ("pp(" <> fnm <> "." <> nt <> ", " <> integer (precCat cat) <> ");\n")
 
@@ -322,7 +329,7 @@ shData packageAbsyn user (cat, rules) = unlines k
           [ "  private static void sh(" ++ packageAbsyn ++ "."
                 ++ identCat (normCat cat) +++ "foo)"
           , "  {"
-          , shList user cat rules ++ "  }"
+          , shList packageAbsyn user cat rules ++ "  }"
           ]
           else
           [ "  private static void sh(" ++ packageAbsyn ++ "."
@@ -333,7 +340,7 @@ shData packageAbsyn user (cat, rules) = unlines k
 
 
 shRule :: String -> Rule -> String
-shRule packageAbsyn (Rule fun _c cats) | not (isCoercion fun || isDefinedRule fun) = unlines
+shRule packageAbsyn (Rule fun _c cats _) | not (isCoercion fun || isDefinedRule fun) = unlines
     [ "    if (foo instanceof" +++ packageAbsyn ++ "." ++ fun ++ ")"
     , "    {"
     , "       " ++ packageAbsyn ++ "." ++ fun +++ fnm +++ "= ("
@@ -357,8 +364,8 @@ shRule packageAbsyn (Rule fun _c cats) | not (isCoercion fun || isDefinedRule fu
     fnm = '_' : map toLower fun
 shRule _nm _ = ""
 
-shList :: [UserDef] -> Cat -> [Rule] -> String
-shList user c _rules = unlines
+shList :: String -> [UserDef] -> Cat -> [Rule] -> String
+shList packageAbsyn user c _rules = unlines
   [
    "     for (java.util.Iterator<" ++ et
           ++ "> it = foo.iterator(); it.hasNext();)",
@@ -369,15 +376,13 @@ shList user c _rules = unlines
    "     }"
   ]
     where
-    et = cat2JavaType user $ normCatOfList c
+    et = typename packageAbsyn user $ identCat $ normCatOfList c
 
 -- |
 -- >>> shCat "F" (ListCat (Cat "A"), "lista_")
 --        render("[");
 --        sh(F.lista_);
 --        render("]");
--- <BLANKLINE>
--- >>> shCat "F" (InternalCat, "#_")
 -- <BLANKLINE>
 -- >>> shCat "F" (Cat "A", "a_")
 --        sh(F.a_);
@@ -387,7 +392,6 @@ shCat fnm (ListCat _, vname) = vcat
     [ "       render(\"[\");"
     , "       sh(" <> fnm <> "." <> vname <> ");"
     , "       render(\"]\");\n" ]
-shCat _ (InternalCat, _)     = empty
 shCat fname (_, vname)       = "       sh(" <> fname <> "." <> vname <> ");\n"
 
 --Helper function that escapes characters in strings

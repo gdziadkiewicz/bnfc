@@ -16,15 +16,20 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA
 -}
 
 module BNFC.Backend.CPP.STL (makeCppStl,) where
+
+import Data.Char
+import Data.List (nub)
+import qualified Data.Map as Map
 
 import BNFC.Utils
 import BNFC.CF
 import BNFC.Options
 import BNFC.Backend.Base
+import BNFC.Backend.C.CFtoBisonC (unionBuiltinTokens)
 import BNFC.Backend.CPP.Makefile
 import BNFC.Backend.CPP.STL.CFtoSTLAbs
 import BNFC.Backend.CPP.NoSTL.CFtoFlex
@@ -32,7 +37,6 @@ import BNFC.Backend.CPP.STL.CFtoBisonSTL
 import BNFC.Backend.CPP.STL.CFtoCVisitSkelSTL
 import BNFC.Backend.CPP.PrettyPrinter
 import BNFC.Backend.CPP.STL.STLUtils
-import Data.Char
 import qualified BNFC.Backend.Common.Makefile as Makefile
 
 makeCppStl :: SharedOptions -> CF -> MkFiles ()
@@ -44,9 +48,10 @@ makeCppStl opts cf = do
     mkfile (name ++ ".l") flex
     let bison = cf2Bison (linenumbers opts) (inPackage opts) name cf env
     mkfile (name ++ ".y") bison
-    let header = mkHeaderFile (inPackage opts) cf (allCats cf) (allEntryPoints cf) env
+    let header = mkHeaderFile (inPackage opts) cf (allParserCats cf) (allEntryPoints cf) (Map.elems env)
     mkfile "Parser.H" header
-    let (skelH, skelC) = cf2CVisitSkel (inPackage opts) cf
+    mkfile "ParserError.H" (printParseErrHeader (inPackage opts) cf)
+    let (skelH, skelC) = cf2CVisitSkel True (inPackage opts) cf
     mkfile "Skeleton.H" skelH
     mkfile "Skeleton.C" skelC
     let (prinH, prinC) = cf2CPPPrinter True (inPackage opts) cf
@@ -56,6 +61,34 @@ makeCppStl opts cf = do
     Makefile.mkMakefile opts $ makefile name
   where name = lang opts
 
+printParseErrHeader :: Maybe String -> CF -> String
+printParseErrHeader inPackage cf =
+  unlines
+  [
+     " #pragma once "
+     , " #include <string>"
+     , " #include <stdexcept>"
+     , ""
+     , nsStart inPackage
+     , " class parse_error : public std::runtime_error"
+     , " {"
+     , " public:"
+     , "     parse_error(int line, std::string str)"
+     , "         : std::runtime_error(str)"
+     , "         , m_line(line) {}"
+     , "     int getLine() {"
+     , "         return m_line;"
+     , "     } "
+     , " private:"
+     , "     int m_line;"
+     , " }; "
+     , nsEnd inPackage
+     ]
+     where
+      cat = head $ allEntryPoints cf
+      dat = identCat $ normCat cat
+      def = identCat cat
+      scope = nsScope inPackage
 
 cpptest :: Maybe String -> CF -> String
 cpptest inPackage cf =
@@ -67,11 +100,13 @@ cpptest inPackage cf =
     "/* pretty-print the result.                                                 */",
     "/*                                                                          */",
     "/****************************************************************************/",
-    "#include <stdio.h>",
-    "#include <string.h>",
+    "#include <cstdio>",
+    "#include <string>",
+    "#include <iostream>",
     "#include \"Parser.H\"",
     "#include \"Printer.H\"",
     "#include \"Absyn.H\"",
+    "#include \"ParserError.H\"",
     "",
     "void usage() {",
     "  printf(\"usage: Call with one of the following argument " ++
@@ -110,10 +145,15 @@ cpptest inPackage cf =
     "    }",
     "  } else input = stdin;",
     "  /* The default entry point is used. For other options see Parser.H */",
-    "  " ++ scope ++ def ++ " *parse_tree = " ++ scope ++ "p" ++ def ++ "(input);",
+    "  " ++ scope ++ dat ++ " *parse_tree = nullptr;",
+    "  try { ",
+    "  parse_tree = " ++ scope ++ "p" ++ def ++ "(input);",
+    "  } catch( " ++ scope ++ "parse_error &e) {",
+    "     std::cout << \"Parse error on line \" << e.getLine(); ",
+    "  }",
     "  if (parse_tree)",
     "  {",
-    "    printf(\"\\nParse Succesful!\\n\");",
+    "    printf(\"\\nParse Successful!\\n\");",
     "    if (!quiet) {",
     "      printf(\"\\n[Abstract Syntax]\\n\");",
     "      " ++ scope ++ "ShowAbsyn *s = new " ++ scope ++ "ShowAbsyn();",
@@ -129,59 +169,62 @@ cpptest inPackage cf =
     ""
    ]
   where
-   def = show (head (allEntryPoints cf))
+   cat = head $ allEntryPoints cf
+   dat = identCat $ normCat cat
+   def = identCat cat
    scope = nsScope inPackage
 
-mkHeaderFile inPackage cf cats eps env = unlines
- [
-  "#ifndef " ++ hdef,
-  "#define " ++ hdef,
-  "",
-  "#include<vector>",
-  "#include<string>",
-  "",
-  nsStart inPackage,
-  concatMap mkForwardDec cats,
-  "typedef union",
-  "{",
-  "  int int_;",
-  "  char char_;",
-  "  double double_;",
-  "  char* string_;",
-  concatMap mkVar cats ++ "} YYSTYPE;",
-  "",
-  concatMap mkFuncs eps,
-  nsEnd inPackage,
-  "",
-  "#define " ++ nsDefine inPackage "_ERROR_" ++ " 258",
-  mkDefines (259 :: Int) env,
-  "extern " ++ nsScope inPackage ++ "YYSTYPE " ++ nsString inPackage ++ "yylval;",
-  "",
-  "#endif"
- ]
- where
+mkHeaderFile inPackage cf cats eps env = unlines $ concat
+  [ [ "#ifndef " ++ hdef
+    , "#define " ++ hdef
+    , ""
+    , "#include<vector>"
+    , "#include<string>"
+    , ""
+    , nsStart inPackage
+    ]
+  , map mkForwardDec $ nub $ map normCat cats
+  , [ "typedef union"
+    , "{"
+    ]
+  , map ("  " ++) unionBuiltinTokens
+  , concatMap mkVar cats
+  , [ "} YYSTYPE;"
+    , ""
+    ]
+  , concatMap mkFuncs eps
+  , [ nsEnd inPackage
+    , ""
+    , "#define " ++ nsDefine inPackage "_ERROR_" ++ " 258"
+    , mkDefines (259 :: Int) env
+    , "extern " ++ nsScope inPackage ++ "YYSTYPE " ++ nsString inPackage ++ "yylval;"
+    , ""
+    , "#endif"
+    ]
+  ]
+  where
   hdef = nsDefine inPackage "PARSER_HEADER_FILE"
-  mkForwardDec s | normCat s == s = "class " ++ identCat s ++ ";\n"
-  mkForwardDec _ = ""
-  mkVar s | normCat s == s = "  " ++ identCat s ++"*" +++ map toLower (identCat s) ++ "_;\n"
-  mkVar _ = ""
+  mkForwardDec s = "class " ++ identCat s ++ ";"
+  mkVar s | normCat s == s = [ "  " ++ identCat s ++"*" +++ map toLower (identCat s) ++ "_;" ]
+  mkVar _ = []
   mkDefines n [] = mkString n
-  mkDefines n ((_,s):ss) = "#define " ++ s +++ show n ++ "\n" ++ mkDefines (n+1) ss -- "nsDefine inPackage s" not needed (see cf2flex::makeSymEnv)
-  mkString n =  if isUsedCat cf catString
+  mkDefines n (s:ss) = "#define " ++ s +++ show n ++ "\n" ++ mkDefines (n+1) ss -- "nsDefine inPackage s" not needed (see cf2flex::makeSymEnv)
+  mkString n =  if isUsedCat cf (TokenCat catString)
    then ("#define " ++ nsDefine inPackage "_STRING_ " ++ show n ++ "\n") ++ mkChar (n+1)
    else mkChar n
-  mkChar n =  if isUsedCat cf catChar
+  mkChar n =  if isUsedCat cf (TokenCat catChar)
    then ("#define " ++ nsDefine inPackage "_CHAR_ " ++ show n ++ "\n") ++ mkInteger (n+1)
    else mkInteger n
-  mkInteger n =  if isUsedCat cf catInteger
+  mkInteger n =  if isUsedCat cf (TokenCat catInteger)
    then ("#define " ++ nsDefine inPackage "_INTEGER_ " ++ show n ++ "\n") ++ mkDouble (n+1)
    else mkDouble n
-  mkDouble n =  if isUsedCat cf catDouble
+  mkDouble n =  if isUsedCat cf (TokenCat catDouble)
    then ("#define " ++ nsDefine inPackage "_DOUBLE_ " ++ show n ++ "\n") ++ mkIdent(n+1)
    else mkIdent n
-  mkIdent n =  if isUsedCat cf catIdent
+  mkIdent n =  if isUsedCat cf (TokenCat catIdent)
    then "#define " ++ nsDefine inPackage "_IDENT_ " ++ show n ++ "\n"
    else ""
-  mkFuncs s | normCat s == s = identCat s ++ "*" +++ "p" ++ identCat s ++ "(FILE *inp);\n" ++
-                               identCat s ++ "*" +++ "p" ++ identCat s ++ "(const char *str);\n"
-  mkFuncs _ = ""
+  mkFuncs s =
+    [ identCat (normCat s) ++ "*" +++ "p" ++ identCat s ++ "(FILE *inp);"
+    , identCat (normCat s) ++ "*" +++ "p" ++ identCat s ++ "(const char *str);"
+    ]

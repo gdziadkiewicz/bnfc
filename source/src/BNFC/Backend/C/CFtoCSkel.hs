@@ -16,7 +16,7 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA
 -}
 
 {-
@@ -55,7 +55,7 @@ import Text.PrettyPrint
 cf2CSkel :: CF -> (String, String)
 cf2CSkel cf = (mkHFile cf groups, mkCFile cf groups)
  where
-    groups = fixCoercions (ruleGroups cf)
+    groups = fixCoercions (ruleGroupsInternals cf)
 
 
 {- **** Header (.H) File Functions **** -}
@@ -70,7 +70,7 @@ mkHFile cf groups = unlines
   footer
  ]
  where
-  user = fst (unzip (tokenPragmas cf))
+  user = map fst $ tokenPragmas cf
   header = unlines
    [
     "#ifndef SKELETON_HEADER",
@@ -80,9 +80,7 @@ mkHFile cf groups = unlines
     "#include \"Absyn.h\"",
     ""
    ]
-  prUserH user = "void visit" ++ u' ++ "(" ++ show user ++ " p);"
-    where
-     u' = let u = show user in toUpper (head u) : map toLower (tail u) --this is a hack to fix a potential capitalization problem.
+  prUserH u = "void visit" ++ basicFunNameS u ++ "(" ++ u ++ " p);"
   footer = unlines
    [
     "void visitIdent(Ident i);",
@@ -107,14 +105,13 @@ prDataH (cat, _rules) =
 -- | Makes the skeleton's .c File
 mkCFile :: CF -> [(Cat,[Rule])] -> String
 mkCFile cf groups = concat
-   [
-    header,
-    concatMap prData groups,
-    concatMap (prUser.show) user,
-    footer
-   ]
+  [ header
+  , concatMap prData groups
+  , concatMap prUser user
+  , footer
+  ]
   where
-    user = fst (unzip (tokenPragmas cf))
+    user = map fst $ tokenPragmas cf
     header = unlines [
       "/*** BNFC-Generated Visitor Traversal Skeleton. ***/",
       "/* This traverses the abstract syntax tree.",
@@ -129,13 +126,11 @@ mkCFile cf groups = concat
       ]
     prUser u = unlines
      [
-      "void visit" ++ u' ++ "(" ++ u ++ " p)",
+      "void visit" ++ basicFunNameS u ++ "(" ++ u ++ " p)",
       "{",
       "  /* Code for " ++ u ++ " Goes Here */",
       "}"
      ]
-     where
-      u' = toUpper (head u) : map toLower (tail u) --this is a hack to fix a potential capitalization problem.
     footer = unlines
      [
       "void visitIdent(Ident i)",
@@ -180,9 +175,9 @@ prData (cat, rules)
       -- Not a list:
   | otherwise = unlines
                [
-                "void visit" ++ cl ++ "(" ++ cl ++ " _p_)",
+                "void visit" ++ cl ++ "(" ++ cl ++ " p)",
                 "{",
-                "  switch(_p_->kind)",
+                "  switch(p->kind)",
                 "  {",
                 concatMap (render . prPrintRule) rules,
                 "  default:",
@@ -198,29 +193,31 @@ prData (cat, rules)
 
 -- | Visits all the instance variables of a category.
 -- >>> let ab = Cat "ab"
--- >>> prPrintRule (Rule "abc" undefined [Left ab, Left ab])
+-- >>> prPrintRule (Rule "abc" undefined [Left ab, Left ab] Parsable)
 --   case is_abc:
 --     /* Code for abc Goes Here */
---     visitab(_p_->u.abc_.ab_1);
---     visitab(_p_->u.abc_.ab_2);
+--     visitab(p->u.abc_.ab_1);
+--     visitab(p->u.abc_.ab_2);
 --     break;
 -- <BLANKLINE>
 -- >>> let ab = TokenCat "ab"
--- >>> prPrintRule (Rule "abc" undefined [Left ab])
+-- >>> prPrintRule (Rule "abc" undefined [Left ab] Parsable)
 --   case is_abc:
 --     /* Code for abc Goes Here */
---     visitAb(_p_->u.abc_.ab_);
+--     visitAb(p->u.abc_.ab_);
 --     break;
 -- <BLANKLINE>
--- >>> prPrintRule (Rule "abc" undefined [Left ab, Left ab])
+-- >>> prPrintRule (Rule "abc" undefined [Left ab, Left ab] Parsable)
 --   case is_abc:
 --     /* Code for abc Goes Here */
---     visitAb(_p_->u.abc_.ab_1);
---     visitAb(_p_->u.abc_.ab_2);
+--     visitAb(p->u.abc_.ab_1);
+--     visitAb(p->u.abc_.ab_2);
 --     break;
 -- <BLANKLINE>
 prPrintRule :: Rule -> Doc
-prPrintRule (Rule fun _c cats) | not (isCoercion fun) = nest 2 $ vcat
+prPrintRule (Rule fun _c cats _)
+  | isCoercion fun = ""
+  | otherwise      = nest 2 $ vcat
     [ text $ "case is_" ++ fun ++ ":"
     , nest 2 (vcat
         [ "/* Code for " <> text fun <> " Goes Here */"
@@ -230,7 +227,6 @@ prPrintRule (Rule fun _c cats) | not (isCoercion fun) = nest 2 $ vcat
     ]
   where
     cats' = vcat $ map (prCat fun) (lefts (numVars cats))
-prPrintRule (Rule _fun _ _) = ""
 
 -- Prints the actual instance-variable visiting.
 prCat :: Fun -> (Cat, Doc) -> Doc
@@ -238,9 +234,14 @@ prCat fnm (cat, vname) =
       let visitf = "visit" <> if isTokenCat cat
                        then basicFunName cat
                        else text (identCat (normCat cat))
-      in visitf <> parens ("_p_->u." <> text v <> "_." <> vname ) <> ";"
+      in visitf <> parens ("p->u." <> text v <> "_." <> vname ) <> ";"
     where v = map toLower $ normFun fnm
 
---The visit-function name of a basic type
+-- | The visit-function name of a basic type
+
 basicFunName :: Cat -> Doc
-basicFunName c = text (toUpper (head (show c)): tail (show c))
+basicFunName = text . basicFunNameS . catToStr
+
+basicFunNameS :: String -> String
+basicFunNameS (c:cs) = toUpper c : cs
+basicFunNameS []     = error "impossible: empty string in CFtoCSkel.basicFunNameS"

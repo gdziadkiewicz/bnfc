@@ -14,14 +14,14 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA
 -}
 
 module BNFC.Backend.HaskellGADT.HaskellGADTCommon (Constructor(..), cf2cons, isTreeType) where
 
 import BNFC.CF
+import BNFC.Backend.Haskell.Utils ( catToVar )
 
-import Data.Char
 
 data Constructor = Constructor
     { consCat :: Cat
@@ -39,7 +39,7 @@ cf2cons cf =
         , consVars = zip cats (mkVars cats), consRhs = rhsFun cf fun
         } | (cat,rules) <- cf2data cf, (fun,cats) <- rules]
     ++ [ Constructor
-        { consCat = cat, consFun = show cat, consPrec = 0
+        { consCat = TokenCat cat, consFun = cat, consPrec = 0
         , consVars = [(Cat "String","str")], consRhs = [Left (Cat "String")]
         } | cat <- specialCats cf]
   where
@@ -47,23 +47,6 @@ cf2cons cf =
     mkUnique [] _ = []
     mkUnique (x:xs) n | x `elem` xs || n > 0 = (x ++ show n) : mkUnique xs (n+1)
                       | otherwise = x : mkUnique xs n
-
--- | Make a variable name for a category.
-catToVar :: Cat -> String
-catToVar = checkRes . var
-  where var (ListCat cat) = var cat ++ "s"
-        var (Cat "Ident")   = "i"
-        var (Cat "Integer") = "n"
-        var (Cat "String")  = "str"
-        var (Cat "Char")    = "c"
-        var (Cat "Double")  = "d"
-        var xs        = map toLower $show xs
-        checkRes s |  s `elem` reservedHaskell = s ++ "'"
-                   | otherwise              = s
-        reservedHaskell =
-            ["case","class","data","default","deriving","do","else","if"
-            , "import","in","infix","infixl","infixr","instance","let","module"
-            , "newtype","of","then","type","where","as","qualified","hiding"]
 
 -- | Get the rule for a function.
 ruleFun :: CF -> Fun -> Rule
@@ -78,5 +61,7 @@ rhsFun :: CF -> Fun -> [Either Cat String]
 rhsFun cf f = rhsRule $ ruleFun cf f
 
 isTreeType :: CF -> Cat -> Bool
-isTreeType cf c | isList c  = isTreeType cf (catOfList c)
-                | otherwise = c `elem` (allCats cf ++ specialCats cf)
+isTreeType cf (TokenCat c) = c `elem` specialCats cf
+isTreeType cf c
+  | isList c  = isTreeType cf (catOfList c)
+  | otherwise = c `elem` reallyAllCats cf

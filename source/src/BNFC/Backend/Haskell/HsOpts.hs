@@ -11,20 +11,22 @@ type Options = SharedOptions
 alex1 opts = alexMode opts == Alex1
 
 absFile, absFileM,
- alexFile, alexFileM,
+ alexFile, alexFileHs, alexFileM,
  composOpFile, composOpFileM,
  gfAbs,
- happyFile, happyFileM,
+ happyFile, happyFileHs, happyFileM,
  errFile, errFileM,
  templateFile, templateFileM,
  printerFile, printerFileM,
  layoutFile, layoutFileM,
- tFile :: Options -> String
+ tFile, tFileExe :: Options -> String
 absFile       = mkFile withLang "Abs" "hs"
 absFileM      = mkMod  withLang "Abs"
 alexFile      = mkFile withLang "Lex" "x"
+alexFileHs    = mkFile withLang "Lex" "hs"
 alexFileM     = mkMod  withLang "Lex"
 happyFile     = mkFile withLang "Par" "y"
+happyFileHs   = mkFile withLang "Par" "hs"
 happyFileM    = mkMod  withLang "Par"
 txtFile       = mkFile withLang "Doc" "txt"
 templateFile  = mkFile withLang "Skel" "hs"
@@ -33,18 +35,49 @@ printerFile   = mkFile withLang "Print" "hs"
 printerFileM  = mkMod  withLang "Print"
 gfAbs         = mkFile withLang "" "Abs.gf"
 tFile         = mkFile withLang "Test" "hs"
+tFileExe      = mkFile withLang "Test" ""
 errFile       = mkFile noLang   "ErrM" "hs"
 errFileM      = mkMod  noLang   "ErrM"
 shareFile     = mkFile noLang   "SharedString" "hs"
 shareFileM    = mkMod  noLang   "SharedString"
 layoutFileM   = mkMod  withLang "Layout"
 layoutFile    = mkFile withLang "Layout" "hs"
-cnfTablesFile = mkFile withLang "CnfTables" "hs"
-cnfTablesFileM= mkMod  withLang "CnfTables"
 xmlFile       = mkFile withLang "XML" "hs"
 xmlFileM      = mkMod  withLang "XML"
 composOpFile  = mkFile noLang   "ComposOp" "hs"
-composOpFileM = mkMod noLang    "ComposOp"
+composOpFileM = mkMod  noLang   "ComposOp"
+
+-- Files created by the CNF variant
+
+cnfTablesFile, cnfTablesFileM
+  , cnfTestFile, cnfTestFileExe
+  , cnfBenchFile
+  :: Options -> String
+cnfTablesFile  = mkFile withLang "CnfTables" "hs"
+cnfTablesFileM = mkMod  withLang "CnfTables"
+cnfTestFile    = mkFile withLang "Test" "hs"  -- WAS: TestCNF, but just naming it Test is easier for testsuite
+cnfTestFileExe = mkFile withLang "Test" ""
+cnfBenchFile   = mkFile withLang "BenchCNF" "hs"
+
+-- Files created by the Agda backend
+
+agdaASTFile
+  , agdaASTFileM
+  , agdaParserFile
+  , agdaParserFileM
+  , agdaLibFile
+  , agdaLibFileM
+  , agdaMainFile
+  , agdaMainFileM
+ :: Options -> String
+agdaASTFile     = mkFile withLang "AST" "agda"
+agdaASTFileM    = mkMod  withLang "AST"
+agdaParserFile  = mkFile withLang "Parser" "agda"
+agdaParserFileM = mkMod  withLang "Parser"
+agdaLibFile     = mkFile noLang   "IOLib" "agda"
+agdaLibFileM    = mkMod  noLang   "IOLib"
+agdaMainFile    = mkFile noLang   "Main" "agda"
+agdaMainFileM   = mkMod  noLang   "Main"
 
 
 noLang :: Options -> String -> String

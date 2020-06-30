@@ -15,7 +15,7 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA
 -}
 
 module BNFC.Backend.HaskellGADT (makeHaskellGadt) where
@@ -54,27 +54,28 @@ makeHaskellGadt opts cf = do
       errMod = errFileM opts
       shareMod = shareFileM opts
   do
-    mkfile (absFile opts) $ cf2Abstract (byteStrings opts) absMod cf composOpMod
+    mkfile (absFile opts) $ cf2Abstract (tokenText opts) absMod cf composOpMod
     mkfile (composOpFile opts) $ composOp composOpMod
     case alexMode opts of
       Alex1 -> do
-        mkfile (alexFile opts) $ cf2alex lexMod errMod cf
+        mkfile (alexFile opts) $ cf2alex lexMod cf
         liftIO $ putStrLn "   (Use Alex 1.1 to compile.)"
       Alex2 -> do
-        mkfile (alexFile opts) $ cf2alex2 lexMod errMod shareMod (shareStrings opts) (byteStrings opts) cf
+        mkfile (alexFile opts) $ cf2alex2 lexMod shareMod (shareStrings opts) (tokenText opts) cf
         liftIO $ putStrLn "   (Use Alex 2.0 to compile.)"
       Alex3 -> do
-        mkfile (alexFile opts) $ cf2alex3 lexMod errMod shareMod (shareStrings opts) (byteStrings opts) cf
+        mkfile (alexFile opts) $ cf2alex3 lexMod shareMod (shareStrings opts) (tokenText opts) cf
         liftIO $ putStrLn "   (Use Alex 3.0 to compile.)"
     mkfile (happyFile opts) $
-      cf2HappyS parMod absMod lexMod errMod (glr opts) (byteStrings opts) False cf
+      cf2Happy parMod absMod lexMod (glr opts) (tokenText opts) False cf
     liftIO $ putStrLn "   (Tested with Happy 1.15)"
-    mkfile (templateFile opts) $ cf2Template (templateFileM opts) absMod errMod cf
-    mkfile (printerFile opts)  $ cf2Printer False False True prMod absMod cf
-    when (hasLayout cf) $ mkfile (layoutFile opts) $ cf2Layout (alexMode opts == Alex1) (inDir opts) layMod lexMod cf
+    mkfile (templateFile opts) $ cf2Template (templateFileM opts) absMod cf
+    mkfile (printerFile opts)  $ cf2Printer StringToken False True prMod absMod cf
+    when (hasLayout cf) $ mkfile (layoutFile opts) $
+      cf2Layout (tokenText opts) (alexMode opts == Alex1) layMod lexMod cf
     mkfile (tFile opts)        $ Haskell.testfile opts cf
-    mkfile (errFile opts) $ mkErrM errMod (ghcExtensions opts)
-    when (shareStrings opts) $ mkfile (shareFile opts)    $ sharedString shareMod (byteStrings opts) cf
+    mkfile (errFile opts) $ mkErrM errMod
+    when (shareStrings opts) $ mkfile (shareFile opts)    $ sharedString shareMod (tokenText opts) cf
     Makefile.mkMakefile opts $ Haskell.makefile opts
     case xml opts of
       2 -> makeXML opts True cf

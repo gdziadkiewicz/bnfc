@@ -14,21 +14,22 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA
 -}
 
 module BNFC.Backend.XML ---- (cf2DTD, cf2XML)
   where
 
+import Data.List  ( intersperse, intercalate )
+import Data.Maybe ( fromJust )
+
 import BNFC.CF
 import BNFC.Utils
 import BNFC.Backend.Base
-import BNFC.Options hiding (Backend)
+import BNFC.Options hiding ( Backend )
 import BNFC.Backend.Haskell.CFtoTemplate ()
-import BNFC.Backend.Haskell.HsOpts (xmlFile, xmlFileM, absFileM)
-import Data.List (intersperse, intercalate)
-import Data.Char(toLower)
-import Data.Maybe (fromJust)
+import BNFC.Backend.Haskell.HsOpts ( xmlFile, xmlFileM, absFileM )
+import BNFC.Backend.Haskell.Utils  ( catToVar )
 
 type Coding = Bool ---- change to at least three values
 
@@ -193,11 +194,12 @@ showsPrintRule _ t = unlines [
   "  prt i x = elemTokS i" +++ "\"" ++ t ++ "\"" +++ "x"
   ]
 
-identRule cf = ownPrintRule cf (Cat "Ident")
+identRule cf = ownPrintRule cf catIdent
 
-ownPrintRule cf cat = unlines [
-  "instance XPrint " ++ show cat ++ " where",
-  "  prt i (" ++ show cat ++ posn ++ ") = elemTok i" +++ "\"" ++ show cat ++ "\"" +++ "x"
+ownPrintRule :: CF -> TokenCat -> String
+ownPrintRule cf cat = unlines $
+  [ "instance XPrint " ++ cat ++ " where"
+  , "  prt i (" ++ cat ++ posn ++ ") = elemTok i" +++ "\"" ++ cat ++ "\"" +++ "x"
   ]
  where
    posn = if isPositionCat cf cat then " (_,x)" else " x"
@@ -206,27 +208,14 @@ rules :: CF -> String
 rules cf = unlines $
   map (\(s,xs) -> case_fun s (map toArgs xs)) $ cf2data cf
  where
-   toArgs (cons,args) = ((cons, names (map (checkRes . var) args) (0 :: Int)), ruleOf cons)
+   toArgs (cons,args) = ((cons, names (map catToVar args) (0 :: Int)), ruleOf cons)
    names [] _ = []
    names (x:xs) n
      | x `elem` xs = (x ++ show n) : names xs (n+1)
-     | otherwise = x             : names xs n
-   var (ListCat c)  = var c ++ "s"
-   var (Cat "Ident")   = "id"
-   var (Cat "Integer") = "n"
-   var (Cat "String")  = "str"
-   var (Cat "Char")    = "c"
-   var (Cat "Double")  = "d"
-   var cat            = map toLower (show cat)
-   checkRes s
-        | s `elem` reservedHaskell = s ++ "'"
-        | otherwise              = s
-   reservedHaskell = ["case","class","data","default","deriving","do","else","if",
-                          "import","in","infix","infixl","infixr","instance","let","module",
-                          "newtype","of","then","type","where","as","qualified","hiding"]
+     | otherwise   = x             : names xs n
    ruleOf s = fromJust $ lookupRule s (cfgRules cf)
 
---- case_fun :: Cat -> [(Constructor,Rule)] -> String
+-- case_fun :: Cat -> [(Constructor,Rule)] -> String
 case_fun cat xs = unlines [
   "instance XPrint" +++ show cat +++ "where",
   "  prt i" +++ "e = case e of",

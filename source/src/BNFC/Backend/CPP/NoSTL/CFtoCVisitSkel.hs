@@ -1,3 +1,7 @@
+---------------------------------------------------------------------------
+-- RETIRED, use STL/CFtoCVisitSkelSTL instead
+---------------------------------------------------------------------------
+
 {-# LANGUAGE NoImplicitPrelude #-}
 
 {-
@@ -16,7 +20,7 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA
 -}
 
 {-
@@ -43,20 +47,25 @@ module BNFC.Backend.CPP.NoSTL.CFtoCVisitSkel (cf2CVisitSkel) where
 
 import Prelude'
 
-import BNFC.CF
-import BNFC.Utils ((+++))
-import BNFC.Backend.Common.NamedVariables
-import BNFC.Backend.CPP.Naming (mkVariable)
 import Data.List
 import Data.Char(toLower, toUpper)
 import Data.Either (lefts)
+
+import BNFC.CF
+import BNFC.Utils ((+++))
 import BNFC.PrettyPrint
+
+import BNFC.Backend.Common.NamedVariables
+import BNFC.Backend.Common.OOAbstract (cf2cabs)
+import BNFC.Backend.CPP.Naming (mkVariable)
+import qualified BNFC.Backend.CPP.STL.CFtoCVisitSkelSTL as STL
 
 --Produces (.H file, .C file)
 cf2CVisitSkel :: CF -> (String, String)
-cf2CVisitSkel cf = (mkHFile cf groups, mkCFile cf groups)
- where
-    groups = fixCoercions (ruleGroups cf)
+cf2CVisitSkel cf = (STL.mkHFile Nothing (cf2cabs cf), mkCFile cf groups)
+  -- (mkHFile cf groups, mkCFile cf groups)
+  where
+    groups = fixCoercions (ruleGroupsInternals cf)
 
 
 {- **** Header (.H) File Functions **** -}
@@ -67,7 +76,7 @@ mkHFile cf groups = unlines
  [
   header,
   concatMap prDataH groups,
-  concatMap (prUserH.show) user,
+  concatMap prUserH user,
   footer
  ]
  where
@@ -114,7 +123,7 @@ prDataH (cat, rules) =
 
 --Visit functions for a rule.
 prRuleH :: Rule -> String
-prRuleH (Rule fun _ _) | not (isCoercion fun) = concat
+prRuleH (Rule fun _ _ _) | not (isCoercion fun) && not (isDefinedRule fun) = concat
   ["  void visit", fun, "(", fun, " *", fnm, ");\n"]
    where
     fnm = mkVariable fun
@@ -129,7 +138,7 @@ mkCFile cf groups = concat
    [
     header,
     concatMap (prData user) groups,
-    concatMap (prUser.show) user,
+    concatMap prUser user,
     footer
    ]
   where
@@ -200,7 +209,7 @@ prData user (cat, rules) =
   "}",
   ""
  ] --Not a list:
- else abstract ++ (concatMap (render . prRule) rules)
+ else abstract ++ (concatMap (render . prRule) $ filter (not . isDefinedRule . funRule) rules)
  where
    cl = identCat (normCat cat)
    vname = mkVariable cl
@@ -215,7 +224,7 @@ prData user (cat, rules) =
     Nothing ->  "void Skeleton::visit" ++ cl ++ "(" ++ cl +++ "*" ++ vname ++ ") {} //abstract class\n\n"
 
 -- | Visits all the instance variables of a category.
--- >>> prRule (Rule "F" (Cat "S") [Right "X", Left (TokenCat "A"), Left (Cat "B")])
+-- >>> prRule (Rule "F" (Cat "S") [Right "X", Left (TokenCat "A"), Left (Cat "B")] Parsable)
 -- void Skeleton::visitF(F *f)
 -- {
 --   /* Code For F Goes Here */
@@ -225,7 +234,7 @@ prData user (cat, rules) =
 -- }
 -- <BLANKLINE>
 prRule :: Rule -> Doc
-prRule (Rule fun _ cats) | not (isCoercion fun) = vcat
+prRule (Rule fun _ cats _) | not (isCoercion fun) = vcat
   [ text ("void Skeleton::visit" ++ fun ++ "(" ++ fun +++ "*" ++ fnm ++ ")")
   , codeblock 2
       [ text ("/* Code For " ++ fun ++ " Goes Here */")
@@ -258,16 +267,8 @@ prCat fnm (cat, nt)
 --This is because you don't -> a basic non-pointer type.
 isBasic :: [UserDef] -> String -> Bool
 isBasic user v =
-  if elem (init v) user'
-    then True
-    else if "integer_" `isPrefixOf` v then True
-    else if "char_" `isPrefixOf` v then True
-    else if "string_" `isPrefixOf` v then True
-    else if "double_" `isPrefixOf` v then True
-    else if "ident_" `isPrefixOf` v then True
-    else False
-  where
-   user' = map (map toLower.show) user
+  init v `elem` map (map toLower) user
+  || any (`isPrefixOf` v) [ "integer_" , "char_" , "string_" , "double_" , "ident_" ]
 
 --The visit-function name of a basic type
 funName :: String -> String
@@ -277,4 +278,4 @@ funName v =
     else if "string_" `isPrefixOf` v then "String"
     else if "double_" `isPrefixOf` v then "Double"
     else if "ident_" `isPrefixOf` v then "Ident"
-    else (toUpper (head v)) : (init (tail v)) --User-defined type
+    else toUpper (head v) : init (tail v) -- User-defined type

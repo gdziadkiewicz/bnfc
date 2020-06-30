@@ -4,7 +4,8 @@
  -
  - Tests specific to some reported issues
  - -}
-module RegressionTests (all) where
+
+module RegressionTests (all, current) where
 
 import qualified Data.Text as T
 import Test.HUnit (assertBool)
@@ -22,6 +23,9 @@ all = makeTestSuite "Regression tests" $
     , issue170a, issue170b, issue172
     ]
 
+current = makeTestSuite "Regression tests" $
+    [ issue60 ]
+
 -- | A full regression test for the Haskell backend
 haskellRegressionTest
   :: String -- ^ Pretty name of test.
@@ -37,12 +41,14 @@ haskellRegressionTest title base mod =
     withTmpDir $ \ tmp -> do
       cp (dir </> cfF) tmp
       cd tmp
-      cmd "bnfc" "--haskell" "-m" cfF
+      cmd "bnfc" [ "--haskell", "-m", cfF ]
       cmd "make"
       setStdin input
       output <- cmd =<< canonicalize ("." </> ("Test" ++ mod))
       -- Compare output with the expected one
       assertEqual expected output
+      -- when (expected /= output) $ assertEqual "expected" "output"
+      -- expected `seq` output `seq` return ()
   where
     dir = "regression-tests"
     cfF  = base <.> "cf"
@@ -70,11 +76,11 @@ issue60 :: Test
 issue60 = makeShellyTest "#60 Compilation error in Java when a production uses more than one user-defined token" $
     withTmpDir $ \tmp -> do
         cd tmp
-        writefile "multiple_token.cf" $ T.unlines
+        writefile "multiple-token-123.cf" $ T.unlines
             [ "Label. Category ::= FIRST SECOND;"
             , "token FIRST 'a';"
             , "token SECOND 'b';" ]
-        cmd "bnfc" "--java" "-m" "multiple_token.cf"
+        cmd "bnfc" "--java" "-m" "multiple-token-123.cf"  -- test for package name sanitization #212
         cmd "make"
 
 issue108 :: Test
@@ -119,7 +125,7 @@ issue113 = makeShellyTest "#113 BNFC to Java creates non-compilable code when us
         cp "regression-tests/113_javatokens.cf" (tmp </> "grammar.cf")
         cd tmp
         cmd "bnfc" "--java" "grammar.cf"
-        cmd "javac" "grammar/VisitSkel.java"
+        cmd "javac" "-sourcepath" "." "grammar/VisitSkel.java"
 
 -- | Issue #127
 issue127 :: Test
@@ -173,7 +179,7 @@ issue159 = makeShellyTest "#159 String rendering in Java does not work" $
         cmd "make"
         let input = "the_following_is_a_quoted_string \"here I am\""
         setStdin input
-        out <- cmd "java"  "issue/Test"
+        out <- cmd "java" "issue/Test"
         liftIO $ assertBool "Invalid output" (input `T.isInfixOf` out)
 
 issue170a :: Test

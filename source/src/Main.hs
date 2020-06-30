@@ -22,13 +22,13 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA
 -}
 
 
 module Main where
 
-import BNFC.Backend.Base hiding (Backend)
+import BNFC.Backend.Base
 import BNFC.Backend.C
 import BNFC.Backend.CPP.NoSTL
 import BNFC.Backend.CPP.STL
@@ -41,8 +41,9 @@ import BNFC.Backend.Java
 import BNFC.Backend.Latex
 import BNFC.Backend.OCaml
 import BNFC.Backend.Pygments
+import BNFC.CF (CF)
 import BNFC.GetCF
-import BNFC.Options hiding (make)
+import BNFC.Options hiding (make, Backend)
 
 import Paths_BNFC ( version )
 
@@ -61,19 +62,33 @@ printUsageErrors msg = do
 main :: IO ()
 main = do
   args <- getArgs
-  case parseMode args of
-    UsageError e -> printUsageErrors [e]
-    Help    -> putStrLn help >> exitSuccess
-    Version ->  putStrLn (showVersion version) >> exitSuccess
-    Target options file | target options == TargetProfile ->
-      readFile file >>= parseCFP options TargetProfile
-                    >>= writeFiles (outDir options) . makeHaskellProfile options
-    Target options file ->
-      readFile file >>= parseCF options (target options) >>= make (target options) options
-  where
-    make t opts cf = writeFiles (outDir opts) $ (maketarget t) opts cf
+  let (mode, warnings) = parseMode args
 
-maketarget t = case t of
+  -- Print command-line argument warnings (if any).
+  mapM_ (hPutStrLn stderr) warnings
+
+  case mode of
+
+    UsageError e -> printUsageErrors [e]
+    Help         -> putStrLn help >> exitSuccess
+    Version      -> putStrLn (showVersion version) >> exitSuccess
+
+    Target options file
+      | target options == TargetCheck ->
+          readFile file
+            >>= parseCFP options TargetCheck
+            >>  return ()
+      | target options == TargetProfile ->
+          readFile file
+            >>= parseCFP options TargetProfile
+            >>= writeFiles (outDir options) . makeHaskellProfile options
+      | otherwise ->
+          readFile file
+            >>= parseCF options (target options)
+            >>= writeFiles (outDir options) . maketarget (target options) options
+
+maketarget :: Target -> SharedOptions -> CF -> Backend
+maketarget = \case
     TargetC            -> makeC
     TargetCpp          -> makeCppStl
     TargetCppNoStl     -> makeCppNoStl
@@ -84,5 +99,6 @@ maketarget t = case t of
     TargetLatex        -> makeLatex
     TargetJava         -> makeJava
     TargetOCaml        -> makeOCaml
-    TargetProfile      -> error "Not implemented"
+    TargetProfile      -> error "impossible"
     TargetPygments     -> makePygments
+    TargetCheck        -> error "impossible"

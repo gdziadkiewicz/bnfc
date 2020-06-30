@@ -16,7 +16,7 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA
 -}
 
 {-
@@ -288,11 +288,11 @@ shToken namespace token = unlinesInline [
 entrypoints :: Namespace -> CF -> String
 entrypoints namespace cf = unlinesInline [
   "    #region Print Entry Points",
-  unlinesInlineMap prEntryPoint (allCats cf),
+  unlinesInlineMap prEntryPoint (reallyAllCats cf),
   "    #endregion",
   "    ",
   "    #region Show Entry Points",
-  unlinesInlineMap shEntryPoint (allCats cf),
+  unlinesInlineMap shEntryPoint (reallyAllCats cf),
   "    #endregion"
   ]
   where
@@ -339,7 +339,7 @@ prData namespace user (cat, rules)
       otherRules = tail rules'
 
 prRule :: Namespace -> Maybe String -> Rule -> String
-prRule namespace maybeElse r@(Rule fun _c cats)
+prRule namespace maybeElse r@(Rule fun _c cats _)
   | not (isCoercion fun || isDefinedRule fun) = unlinesInline [
     "      " ++ fromMaybe "" maybeElse ++ "if(p is " ++ identifier namespace fun ++ ")",
     "      {",
@@ -384,7 +384,6 @@ prCat fnm (c, p) =
     Right t -> "        Render(\"" ++ escapeChars t ++ "\");"
     Left nt
       | "string" `isPrefixOf` nt -> "        PrintQuoted(" ++ fnm ++ "." ++ nt ++ ");"
-      | isInternalVar nt         -> ""
       | otherwise                -> "        PrintInternal(" ++ fnm ++ "." ++ nt ++ ", " ++ show p ++ ");"
 
 
@@ -406,7 +405,7 @@ shData namespace user (cat, rules)
     ]
 
 shRule :: Namespace -> Rule -> String
-shRule namespace (Rule fun _c cats)
+shRule namespace (Rule fun _c cats _)
   | not (isCoercion fun || isDefinedRule fun) = unlinesInline [
     "      if(p is " ++ identifier namespace fun ++ ")",
     "      {",
@@ -449,7 +448,4 @@ shCat fnm c =
           "        ShowInternal(" ++ fnm ++ "." ++ nt ++ ");",
           "        Render(\"]\");"
           ]
-      | isInternalVar nt       -> ""
       | otherwise              -> "        ShowInternal(" ++ fnm ++ "." ++ nt ++ ");"
-
-isInternalVar x = x == show InternalCat ++ "_"

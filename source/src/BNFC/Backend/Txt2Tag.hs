@@ -14,7 +14,7 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA
 -}
 
 module BNFC.Backend.Txt2Tag (cfToTxt)where
@@ -44,18 +44,18 @@ introduction = concat
                ]
 
 prtTerminals :: String -> CF -> String
-prtTerminals name cf = unlines [
-                               "==The lexical structure of " ++ name ++ "==",
-                               identSection cf,
-                               "===Literals===",
-                               prtLiterals name cf,
-                               unlines (map prtOwnToken (tokenPragmas cf)),
-                               "===Reserved words and symbols===",
-                               prtReserved name cf,
-                               prtSymb name cf,
-                               "===Comments===",
-                               prtComments $ comments cf
-                               ]
+prtTerminals name cf = unlines $
+  [ "==The lexical structure of " ++ name ++ "=="
+  , identSection cf
+  , "===Literals==="
+  , prtLiterals cf
+  , unlines (map prtOwnToken (tokenPragmas cf))
+  , "===Reserved words and symbols==="
+  , prtReserved name cf
+  , prtSymb name cf
+  , "===Comments==="
+  , prtComments $ comments cf
+  ]
 
 identSection cf = if not (hasIdent cf) then [] else
                     unlines [
@@ -71,14 +71,13 @@ prtIdentifiers = unlines
    "reserved words excluded."
   ]
 
-prtLiterals :: String -> CF -> String
-prtLiterals _ cf =
+prtLiterals :: CF -> String
+prtLiterals cf =
   unlines $ map stringLit $
-    filter (`notElem` [Cat "Ident"]) $
-      literals cf
+    filter (/= catIdent) $ literals cf
 
-stringLit :: Cat -> String
-stringLit cat = unlines $ case show cat of
+stringLit :: TokenCat -> String
+stringLit = unlines . \case
   "Char" -> ["Character literals //Char// have the form",
              "``'``//c//``'``, where //c// is any single character.",
              ""
@@ -98,7 +97,7 @@ stringLit cat = unlines $ case show cat of
   _ -> []
 
 prtOwnToken (name,reg) = unlines
-  [show name +++ "literals are recognized by the regular expression",
+  [name +++ "literals are recognized by the regular expression",
    "```" ++
    latexRegExp reg ++
    "```"

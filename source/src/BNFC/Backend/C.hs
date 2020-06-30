@@ -16,11 +16,12 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA
 -}
 module BNFC.Backend.C (makeC) where
 
 import Prelude'
+import qualified Data.Map as Map
 
 import BNFC.Utils
 import BNFC.CF
@@ -32,19 +33,19 @@ import BNFC.Backend.C.CFtoBisonC
 import BNFC.Backend.C.CFtoCSkel
 import BNFC.Backend.C.CFtoCPrinter
 import BNFC.PrettyPrint
-import Data.Char
+
 import qualified BNFC.Backend.Common.Makefile as Makefile
 
 makeC :: SharedOptions -> CF -> MkFiles ()
 makeC opts cf = do
-    let (hfile, cfile) = cf2CAbs prefix cf
+    let (hfile, cfile) = cf2CAbs (linenumbers opts) prefix cf
     mkfile "Absyn.h" hfile
     mkfile "Absyn.c" cfile
     let (flex, env) = cf2flex prefix cf
     mkfile (name ++ ".l") flex
-    let bison = cf2Bison prefix cf env
+    let bison = cf2Bison (linenumbers opts) prefix cf env
     mkfile (name ++ ".y") bison
-    let header = mkHeaderFile cf (allCats cf) (allEntryPoints cf) env
+    let header = mkHeaderFile (linenumbers opts) cf (Map.elems env)
     mkfile "Parser.h" header
     let (skelH, skelC) = cf2CSkel cf
     mkfile "Skeleton.h" skelH
@@ -64,10 +65,10 @@ makeC opts cf = do
         name = lang opts
 
 
-makefile :: String -> String -> Doc
-makefile name prefix = vcat
-    [ "CC = gcc"
-    , "CCFLAGS = -g -W -Wall"
+makefile :: String -> String -> String -> Doc
+makefile name prefix basename = vcat
+    [ "CC = gcc -g"
+    , "CCFLAGS = --ansi -W -Wall -Wno-unused-parameter -Wno-unused-function -Wno-unneeded-internal-declaration ${CC_OPTS}"
     , ""
     , "FLEX = flex"
     , "FLEX_OPTS = -P" <> text prefix
@@ -88,11 +89,13 @@ makefile name prefix = vcat
     , Makefile.mkRule "distclean" ["clean"]
       [ "rm -f " ++ unwords
         [ "Absyn.h", "Absyn.c", "Test.c", "Parser.c", "Parser.h", "Lexer.c",
-          "Skeleton.c", "Skeleton.h", "Printer.c", "Printer.h", "Makefile " ]
-        ++ name ++ ".l " ++ name ++ ".y " ++ name ++ ".tex "]
+          "Skeleton.c", "Skeleton.h", "Printer.c", "Printer.h", basename,
+          name ++ ".l", name ++ ".y", name ++ ".tex"
+        ]
+      ]
     , Makefile.mkRule testName ["${OBJS}", "Test.o"]
       [ "@echo \"Linking " ++ testName ++ "...\""
-      , "${CC} ${CCFLAGS} ${OBJS} Test.o -o " ++ testName ]
+      , "${CC} ${OBJS} Test.o -o " ++ testName ]
     , Makefile.mkRule "Absyn.o" [ "Absyn.c", "Absyn.h"]
       [ "${CC} ${CCFLAGS} -c Absyn.c" ]
     , Makefile.mkRule "Lexer.c" [ name ++ ".l" ]
@@ -144,7 +147,7 @@ ctest cf =
     "int main(int argc, char ** argv)",
     "{",
     "  FILE *input;",
-    "  " ++ def ++ " parse_tree;",
+    "  " ++ dat ++ " parse_tree;",
     "  int quiet = 0;",
     "  char *filename = NULL;",
     "",
@@ -173,12 +176,12 @@ ctest cf =
     "  parse_tree = p" ++ def ++ "(input);",
     "  if (parse_tree)",
     "  {",
-    "    printf(\"\\nParse Succesful!\\n\");",
+    "    printf(\"\\nParse Successful!\\n\");",
     "    if (!quiet) {",
     "      printf(\"\\n[Abstract Syntax]\\n\");",
-    "      printf(\"%s\\n\\n\", show" ++ def ++ "(parse_tree));",
+    "      printf(\"%s\\n\\n\", show" ++ dat ++ "(parse_tree));",
     "      printf(\"[Linearized Tree]\\n\");",
-    "      printf(\"%s\\n\\n\", print" ++ def ++ "(parse_tree));",
+    "      printf(\"%s\\n\\n\", print" ++ dat ++ "(parse_tree));",
     "    }",
     "    return 0;",
     "  }",
@@ -187,51 +190,68 @@ ctest cf =
     ""
    ]
   where
-   def = show $ head (allEntryPoints cf)
+  cat :: Cat
+  cat = head $ allEntryPoints cf
+  def :: String
+  def = identCat cat
+  dat :: String
+  dat = identCat . normCat $ cat
 
-mkHeaderFile :: CF -> [Cat] -> [Cat] -> [(a, String)] -> String
-mkHeaderFile cf cats eps env = unlines
- [
-  "#ifndef PARSER_HEADER_FILE",
-  "#define PARSER_HEADER_FILE",
-  "",
-  "#include \"Absyn.h\"",
-  "",
-  "typedef union",
-  "{",
-  "  int int_;",
-  "  char char_;",
-  "  double double_;",
-  "  char* string_;",
-  concatMap mkVar cats ++ "} YYSTYPE;",
-  "",
-  "#define _ERROR_ 258",
-  mkDefines (259::Int) env,
-  "extern YYSTYPE yylval;",
-  concatMap mkFunc eps,
-  "",
-  "#endif"
- ]
- where
-  mkVar s | (normCat s == s) = "  " ++ (identCat s) +++ (map toLower (identCat s)) ++ "_;\n"
-  mkVar _ = ""
+mkHeaderFile :: RecordPositions -> CF -> [String] -> String
+mkHeaderFile _ cf env = unlines $ concat
+  [ [ "#ifndef PARSER_HEADER_FILE"
+    , "#define PARSER_HEADER_FILE"
+    , ""
+    , "#include \"Absyn.h\""
+    , ""
+    , "typedef union"
+    , "{"
+    ]
+  , map ("  " ++) unionBuiltinTokens
+  , concatMap mkPointer $ allParserCatsNorm cf
+  , [ "} YYSTYPE;"
+    , ""
+      -- https://www.gnu.org/software/bison/manual/html_node/Location-Type.html#Location-Type
+    , "typedef struct YYLTYPE"
+    , "{"
+    , "  int first_line;"
+    , "  int first_column;"
+    , "  int last_line;"
+    , "  int last_column;"
+    , "} YYLTYPE;"
+    , ""
+    , "#define _ERROR_ 258"
+    , mkDefines (259::Int) env
+    , ""
+    , "extern YYLTYPE yylloc;"
+    , "extern YYSTYPE yylval;"
+    , ""
+    ]
+  , concatMap mkFunc $ allEntryPoints cf
+  , [ ""
+    , "#endif"
+    ]
+  ]
+  where
   mkDefines n [] = mkString n
-  mkDefines n ((_,s):ss) = ("#define " ++ s +++ (show n) ++ "\n") ++ (mkDefines (n+1) ss)
-  mkString n =  if isUsedCat cf catString
+  mkDefines n (s:ss) = ("#define " ++ s +++ (show n) ++ "\n") ++ (mkDefines (n+1) ss)
+  mkString n =  if isUsedCat cf (TokenCat catString)
    then ("#define _STRING_ " ++ show n ++ "\n") ++ mkChar (n+1)
    else mkChar n
-  mkChar n =  if isUsedCat cf catChar
+  mkChar n =  if isUsedCat cf (TokenCat catChar)
    then ("#define _CHAR_ " ++ show n ++ "\n") ++ mkInteger (n+1)
    else mkInteger n
-  mkInteger n =  if isUsedCat cf catInteger
+  mkInteger n =  if isUsedCat cf (TokenCat catInteger)
    then ("#define _INTEGER_ " ++ show n ++ "\n") ++ mkDouble (n+1)
    else mkDouble n
-  mkDouble n =  if isUsedCat cf catDouble
+  mkDouble n =  if isUsedCat cf (TokenCat catDouble)
    then ("#define _DOUBLE_ " ++ show n ++ "\n") ++ mkIdent(n+1)
    else mkIdent n
-  mkIdent n =  if isUsedCat cf catIdent
+  mkIdent n =  if isUsedCat cf (TokenCat catIdent)
    then ("#define _IDENT_ " ++ show n ++ "\n")
    else ""
-  mkFunc s | normCat s == s = identCat s ++ " p" ++ identCat s ++ "(FILE *inp);\n"
-  mkFunc _ = ""
-
+  -- Andreas, 2019-04-29, issue #210: generate parsers also for coercions
+  mkFunc c =
+    [ identCat (normCat c) ++ "  p" ++ identCat c ++ "(FILE *inp);"
+    , identCat (normCat c) ++ " ps" ++ identCat c ++ "(const char *str);"
+    ]

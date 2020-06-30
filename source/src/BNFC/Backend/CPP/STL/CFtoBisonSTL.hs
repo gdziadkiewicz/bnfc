@@ -1,4 +1,6 @@
 {-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE TupleSections #-}
 
 {-
     BNF Converter: C++ Bison generator
@@ -16,7 +18,7 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA
 -}
 
 {-
@@ -44,23 +46,28 @@
 -}
 
 
-module BNFC.Backend.CPP.STL.CFtoBisonSTL (cf2Bison, union) where
+module BNFC.Backend.CPP.STL.CFtoBisonSTL
+  ( cf2Bison
+  , tokens, union
+  , definedRules
+  ) where
 
 import Prelude'
 
-import Data.Char (toLower,isUpper)
-import Data.List (nub, intercalate)
-import Data.Maybe (fromMaybe)
+import Data.Char  ( isUpper )
+import Data.List  ( nub, intercalate )
+import Data.Maybe ( fromMaybe )
+import qualified Data.Map as Map
 
-import BNFC.Backend.C.CFtoBisonC (startSymbol)
+import BNFC.Backend.C.CFtoBisonC
+  ( resultName, specialToks, startSymbol, typeName, unionBuiltinTokens, varName )
 import BNFC.Backend.CPP.STL.STLUtils
 import BNFC.Backend.Common.NamedVariables hiding (varName)
 import BNFC.CF
 import BNFC.Options (RecordPositions(..))
 import BNFC.PrettyPrint
 import BNFC.TypeChecker
-import BNFC.Utils ((+++))
-import ErrM
+import BNFC.Utils ((+++), when)
 
 --This follows the basic structure of CFtoHappy.
 
@@ -71,11 +78,11 @@ type Action      = String
 type MetaVar     = String
 
 --The environment comes from the CFtoFlex
-cf2Bison :: RecordPositions -> Maybe String -> String -> CF -> SymEnv -> String
+cf2Bison :: RecordPositions -> Maybe String -> String -> CF -> SymMap -> String
 cf2Bison rp inPackage name cf env
  = unlines
     [header inPackage name cf,
-     render $ union inPackage (positionCats cf ++ allCats cf),
+     render $ union inPackage (map TokenCat (positionCats cf) ++ allParserCats cf),
      maybe "" (\ns -> "%define api.prefix {" ++ ns ++ "yy}") inPackage,
      "%token _ERROR_",
      tokens user env,
@@ -99,14 +106,18 @@ header inPackage name cf = unlines
     , "#include <stdio.h>"
     , "#include <string.h>"
     , "#include <algorithm>"
+    , "#include \"ParserError.H\""
     , "#include \"Absyn.H\""
+    , ""
+    , "#define YYMAXDEPTH 10000000"  -- default maximum stack size is 10000, but right-recursion needs O(n) stack
+    , ""
     , "typedef struct yy_buffer_state *YY_BUFFER_STATE;"
     , "int yyparse(void);"
     , "int yylex(void);"
     , "YY_BUFFER_STATE " ++ ns ++ "yy_scan_string(const char *str);"
     , "void " ++ ns ++ "yy_delete_buffer(YY_BUFFER_STATE buf);"
     , "int " ++ ns ++ "yy_mylinenumber;"  --- hack to get line number. AR 2006
-    , "int " ++ ns ++ "initialize_lexer(FILE * inp);"
+    , "void " ++ ns ++ "initialize_lexer(FILE * inp);"
     , "int " ++ ns ++ "yywrap(void)"
     , "{"
     , "  return 1;"
@@ -114,18 +125,20 @@ header inPackage name cf = unlines
     , "void " ++ ns ++ "yyerror(const char *str)"
     , "{"
     , "  extern char *"++ns++"yytext;"
-    , "  fprintf(stderr,\"error: line %d: %s at %s\\n\", "
-    , "    "++ns++"yy_mylinenumber, str, "++ns++"yytext);"
+    , "  throw "++ns++"::parse_error("++ ns ++ "yy_mylinenumber,str);"
     , "}"
     , ""
-    , definedRules cf
     , nsStart inPackage
-    , unlines $ map (parseMethod inPackage name) (allCatsNorm cf ++ positionCats cf)  -- (allEntryPoints cf), M.F. 2004-09-14 fix of [Ty2] bug.
+    , definedRules cf
+    , unlines $ map parseResult dats
+    , unlines $ map (parseMethod cf inPackage name) eps
     , nsEnd inPackage
     , "%}"
     ]
   where
-   ns = nsString inPackage
+    ns   = nsString inPackage
+    eps  = allEntryPoints cf ++ map TokenCat (positionCats cf)
+    dats = nub $ map normCat eps
 
 definedRules :: CF -> String
 definedRules cf =
@@ -140,8 +153,8 @@ definedRules cf =
 
     rule f xs e =
         case checkDefinition' list ctx f xs e of
-        Bad err -> error $ "Panic! This should have been caught already:\n" ++ err
-        Ok (args,(e',t)) -> unlines
+        Left err -> error $ "Panic! This should have been caught already:\n" ++ err
+        Right (args,(e',t)) -> unlines
             [ cppType t ++ " " ++ f ++ "_ (" ++
                 intercalate ", " (map cppArg args) ++ ") {"
             , "  return " ++ cppExp e' ++ ";"
@@ -152,6 +165,7 @@ definedRules cf =
         cppType (ListT (BaseT x)) = "List" ++ show (normCat $ strToCat x) ++ " *"
         cppType (ListT t)         = cppType t ++ " *"
         cppType (BaseT x)
+            | x `elem` baseTokenCatNames = x
             | isToken x ctx = "String"
             | otherwise     = show (normCat $ strToCat x) ++ " *"
 
@@ -159,9 +173,8 @@ definedRules cf =
         cppArg (x,t) = cppType t ++ " " ++ x ++ "_"
 
         cppExp :: Exp -> String
-        cppExp (App "[]" []) = "0"
-        cppExp (App x [])
-            | x `elem` xs         = x ++ "_"  -- argument
+        cppExp (App "[]" [])    = "0"
+        cppExp (Var x)          = x ++ "_"  -- argument
         cppExp (App t [e])
             | isToken t ctx     = cppExp e
         cppExp (App x es)
@@ -175,51 +188,66 @@ definedRules cf =
         call x es = x ++ "(" ++ intercalate ", " (map cppExp es) ++ ")"
 
 
---This generates a parser method for each entry point.
-parseMethod :: Maybe String -> String -> Cat -> String
-parseMethod inPackage _ cat =
-  -- if normCat cat /= cat     M.F. 2004-09-17 comment. No duplicates from allCatsIdNorm
-  -- then ""
-  -- else
-  unlines
-  [
-   "static " ++ cat' ++ "*" +++ resultName cat' +++ "= 0;",
-   cat' ++"* p" ++ cat' ++ "(FILE *inp)",
-   "{",
-   "  " ++ ns ++ "yy_mylinenumber = 1;",       -- O.F.
-   "  " ++ ns ++ "initialize_lexer(inp);",
-   "  if (yyparse())",
-   "  { /* Failure */",
-   "    return 0;",
-   "  }",
-   "  else",
-   "  { /* Success */",
-   "    return" +++ resultName cat' ++ ";",
-   "  }",
-   "}",
-   cat' ++"* p" ++ cat' ++ "(const char *str)",
-   "{",
-   "  YY_BUFFER_STATE buf;",
-   "  int result;",
-   "  " ++ ns ++ "yy_mylinenumber = 1;",
-   "  " ++ ns ++ "initialize_lexer(0);",
-   "  buf = " ++ ns ++ "yy_scan_string(str);",
-   "  result = yyparse();",
-   "  " ++ ns ++ "yy_delete_buffer(buf);",
-   "  if (result)",
-   "  { /* Failure */",
-   "    return 0;",
-   "  }",
-   "  else",
-   "  { /* Success */",
-   "    return" +++ resultName cat' ++ ";",
-   "  }",
-   "}"
-  ]
- where
-  cat' = identCat (normCat cat)
-  ns = nsString inPackage
+-- | Generates declaration and initialization of the @YY_RESULT@ for a parser.
+--
+--   Different parsers (for different precedences of the same category)
+--   share such a declaration.
+--
+--   Expects a normalized category.
+parseResult :: Cat -> String
+parseResult cat =
+  "static " ++ cat' ++ "*" +++ resultName cat' +++ "= 0;"
+  where
+  cat' = identCat cat
 
+--This generates a parser method for each entry point.
+parseMethod :: CF -> Maybe String -> String -> Cat -> String
+parseMethod cf inPackage _ cat = unlines $ concat
+  [ [ cat' ++ "* p" ++ par ++ "(FILE *inp)"
+    , "{"
+    , "  " ++ ns ++ "yy_mylinenumber = 1;"
+    , "  " ++ ns ++ "initialize_lexer(inp);"
+    , "  if (yyparse())"
+    , "  { /* Failure */"
+    , "    return 0;"
+    , "  }"
+    , "  else"
+    , "  { /* Success */"
+    ]
+  , revOpt
+  , [ "    return" +++ res ++ ";"
+    , "  }"
+    , "}"
+    , cat' ++ "* p" ++ par ++ "(const char *str)"
+    , "{"
+    , "  YY_BUFFER_STATE buf;"
+    , "  int result;"
+    , "  " ++ ns ++ "yy_mylinenumber = 1;"
+    , "  " ++ ns ++ "initialize_lexer(0);"
+    , "  buf = " ++ ns ++ "yy_scan_string(str);"
+    , "  result = yyparse();"
+    , "  " ++ ns ++ "yy_delete_buffer(buf);"
+    , "  if (result)"
+    , "  { /* Failure */"
+    , "    return 0;"
+    , "  }"
+    , "  else"
+    , "  { /* Success */"
+    ]
+  , revOpt
+  , [ "    return" +++ res ++ ";"
+    , "  }"
+    , "}"
+    ]
+  ]
+  where
+  cat' = identCat (normCat cat)
+  par  = identCat cat
+  ns   = nsString inPackage
+  res  = resultName cat'
+  -- Vectors are snoc lists
+  revOpt = when (isList cat && cat `notElem` cfgReversibleCats cf)
+             [ "std::reverse(" ++ res ++ "->begin(), " ++ res ++"->end());" ]
 
 -- | The union declaration is special to Bison/Yacc and gives the type of
 -- yylval.  For efficiency, we may want to only include used categories here.
@@ -228,10 +256,10 @@ parseMethod inPackage _ cat =
 -- >>> union Nothing [foo, ListCat foo]
 -- %union
 -- {
---   int int_;
---   char char_;
---   double double_;
---   char* string_;
+--   int    _int;
+--   char   _char;
+--   double _double;
+--   char*  _string;
 --   Foo* foo_;
 --   ListFoo* listfoo_;
 -- }
@@ -245,21 +273,18 @@ parseMethod inPackage _ cat =
 -- >>> union Nothing [foo, ListCat foo, foo2, ListCat foo2]
 -- %union
 -- {
---   int int_;
---   char char_;
---   double double_;
---   char* string_;
+--   int    _int;
+--   char   _char;
+--   double _double;
+--   char*  _string;
 --   Foo* foo_;
 --   ListFoo* listfoo_;
 -- }
 union :: Maybe String -> [Cat] -> Doc
-union inPackage cats =
-    "%union" $$ codeblock 2 (
-        [ "int int_;"
-        , "char char_;"
-        , "double double_;"
-        , "char* string_;" ]
-        ++ map mkPointer normCats )
+union inPackage cats = vcat
+    [ "%union"
+    , codeblock 2 $ map text unionBuiltinTokens ++ map mkPointer normCats
+    ]
   where
     normCats = nub (map normCat cats)
     mkPointer s = scope <> text (identCat s) <> "*" <+> text (varName s) <> ";"
@@ -267,44 +292,33 @@ union inPackage cats =
 
 --declares non-terminal types.
 declarations :: CF -> String
-declarations cf = concatMap (typeNT cf) (positionCats cf ++ allCats cf)
- where --don't define internal rules
-   typeNT cf nt | isPositionCat cf nt || rulesForCat cf nt /= [] =
-      "%type <" ++ varName nt ++ "> " ++ identCat nt ++ "\n"
-   typeNT _ _ = ""
+declarations cf = concatMap typeNT $
+  map TokenCat (positionCats cf) ++
+  filter (not . null . rulesForCat cf) (allParserCats cf) -- don't define internal rules
+  where
+  typeNT nt = "%type <" ++ varName nt ++ "> " ++ identCat nt ++ "\n"
 
 --declares terminal types.
-tokens :: [UserDef] -> SymEnv -> String
-tokens user = concatMap (declTok user)
- where
-  declTok u (s,r) = if s `elem` map show u
-    then "%token<string_> " ++ r ++ "    //   " ++ s ++ "\n"
-    else "%token " ++ r ++ "    //   " ++ s ++ "\n"
-
-specialToks :: CF -> String
-specialToks cf = concat [
-  ifC catString "%token<string_> _STRING_\n",
-  ifC catChar "%token<char_> _CHAR_\n",
-  ifC catInteger "%token<int_> _INTEGER_\n",
-  ifC catDouble "%token<double_> _DOUBLE_\n",
-  ifC catIdent "%token<string_> _IDENT_\n"
-  ]
-   where
-    ifC cat s = if isUsedCat cf cat then s else ""
+tokens :: [UserDef] -> SymMap -> String
+tokens user env = unlines $ map declTok $ Map.toList env
+  where
+  declTok (Keyword   s, r) = tok "" s r
+  declTok (Tokentype s, r) = tok (if s `elem` user then "<_string>" else "") s r
+  tok t s r = concat [ "%token", t, " ", r, "    //   ", s ]
 
 --The following functions are a (relatively) straightforward translation
 --of the ones in CFtoHappy.hs
-rulesForBison :: RecordPositions -> Maybe String -> String -> CF -> SymEnv -> Rules
+rulesForBison :: RecordPositions -> Maybe String -> String -> CF -> SymMap -> Rules
 rulesForBison rp inPackage _ cf env = map mkOne (ruleGroups cf) ++ posRules where
   mkOne (cat,rules) = constructRule rp inPackage cf env rules cat
-  posRules = map mkPos $ positionCats cf
-  mkPos cat = (cat, [(fromMaybe (show cat) (lookup (show cat) env),
-   "$$ = new " ++ show cat ++ "($1," ++ nsString inPackage ++ "yy_mylinenumber) ; YY_RESULT_" ++
-   show cat ++ "_= $$ ;")])
+  posRules = (`map` positionCats cf) $ \ n -> (TokenCat n,
+    [( fromMaybe n $ Map.lookup (Tokentype n) env
+     , concat [ "$$ = new " , n , "($1," , nsString inPackage , "yy_mylinenumber) ; YY_RESULT_" , n , "_= $$ ;" ]
+     )])
 
 -- For every non-terminal, we construct a set of rules.
 constructRule ::
-  RecordPositions -> Maybe String -> CF -> SymEnv -> [Rule] -> NonTerminal -> (NonTerminal,[(Pattern,Action)])
+  RecordPositions -> Maybe String -> CF -> SymMap -> [Rule] -> NonTerminal -> (NonTerminal,[(Pattern,Action)])
 constructRule rp inPackage cf env rules nt =
   (nt,[(p, generateAction rp inPackage nt (ruleName r) b m +++ result) |
      r0 <- rules,
@@ -352,16 +366,17 @@ generateAction rp inPackage cat f b mbs =
 
 -- Generate patterns and a set of metavariables indicating
 -- where in the pattern the non-terminal
-generatePatterns :: CF -> SymEnv -> Rule -> Bool -> (Pattern,[(MetaVar,Bool)])
+generatePatterns :: CF -> SymMap -> Rule -> Bool -> (Pattern,[(MetaVar,Bool)])
 generatePatterns cf env r _ = case rhsRule r of
   []  -> ("/* empty */",[])
   its -> (unwords (map mkIt its), metas its)
  where
-   mkIt i = case i of
-     Left c -> case lookup (show c) env of
-       Just x | not (isPositionCat cf c) -> x
-       _ -> typeName (identCat c)
-     Right s -> fromMaybe s (lookup s env)
+   mkIt = \case
+     Left (TokenCat s)
+       | isPositionCat cf s -> typeName s
+       | otherwise -> fromMaybe (typeName s) $ Map.lookup (Tokentype s) env
+     Left c  -> identCat c
+     Right s -> fromMaybe s $ Map.lookup (Keyword s) env
    metas its = [('$': show i,revert c) | (i,Left c) <- zip [1 :: Int ..] its]
 
    -- notice: reversibility with push_back vectors is the opposite
@@ -381,19 +396,3 @@ prRules ((nt, (p, a) : ls):rs) =
   nt' = identCat nt
   pr []           = []
   pr ((p,a):ls)   = unlines [unwords ["  |", p, "{ ", a , "}"]] ++ pr ls
-
---Some helper functions.
-resultName :: String -> String
-resultName s = "YY_RESULT_" ++ s ++ "_"
-
---slightly stronger than the NamedVariable version.
-varName :: Cat -> String
-varName = (++ "_") . map toLower . identCat . normCat
-
-typeName :: String -> String
-typeName "Ident" = "_IDENT_"
-typeName "String" = "_STRING_"
-typeName "Char" = "_CHAR_"
-typeName "Integer" = "_INTEGER_"
-typeName "Double" = "_DOUBLE_"
-typeName x = x

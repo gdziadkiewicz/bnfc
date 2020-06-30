@@ -16,7 +16,7 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA
 -}
 {-
    **************************************************************
@@ -100,7 +100,7 @@ writeMakefile opts namespace = do
   liftIO $ putStrLn "-----------------------------------------------------------------------------"
   liftIO $ putStrLn ""
   where
-    makefile = vcat
+    makefile basename = vcat
         ["MONO = mono", "MONOC = gmcs"
         , "MONOCFLAGS = -optimize -reference:${PARSERREF}"
         , "GPLEX = ${MONO} gplex.exe", "GPPG = ${MONO} gppg.exe"
@@ -114,7 +114,7 @@ writeMakefile opts namespace = do
         , Makefile.mkRule "distclean" [ "clean" ]
             [ "rm -f ${CSFILES}"
             , "rm -f " ++ unwords [namespace <.> ext | ext <- [ "l","y","tex" ]]
-            , "rm -f Makefile" ]
+            , "rm -f " ++ basename ]
         , Makefile.mkRule "test" [ "Parser.cs", "Scanner.cs" ]
             [ "@echo \"Compiling test...\""
             , "${MONOC} ${MONOCFLAGS} -out:bin/test.exe ${CSFILES}" ]
@@ -305,7 +305,7 @@ csharptest namespace cf = unlines [
   "}"
   ]
   where
-   def = show (head (allEntryPoints cf))
+   def = identCat (head (allEntryPoints cf))
 
 projectguid :: MkFiles String
 projectguid = do

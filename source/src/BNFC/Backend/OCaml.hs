@@ -14,7 +14,7 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA
 -}
 
 -- based on BNFC Haskell backend
@@ -57,7 +57,7 @@ mkFile addLang name ext opts =
     pref ++ if inDir opts
        then lang opts </> name ++ ext'
        else addLang opts name ++ if null ext then "" else ext'
-    where pref = maybe "" (\p->pkgToDir p </> "") (inPackage opts)
+    where pref = maybe "" (\ p -> pkgToDir p </> "") (inPackage opts)
           ext' = if null ext then "" else "." ++ ext
 
 absFile, absFileM, ocamllexFile, ocamllexFileM, ocamlyaccFile, ocamlyaccFileM,
@@ -110,10 +110,12 @@ codeDir opts = let pref = maybe "" pkgToDir (inPackage opts)
                    sep = if null pref || null dir then "" else [pathSeparator]
                  in pref ++ sep ++ dir
 
-makefile :: SharedOptions -> Doc
-makefile opts = vcat
+makefile :: SharedOptions -> String -> Doc
+makefile opts basename = vcat
     [ mkVar "OCAMLC" "ocamlc"
-    , mkVar "OCAMLYACC" "ocamlyacc"
+    , mkVar "OCAMLYACC" $ case ocamlParser opts of
+        OCamlYacc -> "ocamlyacc"
+        Menhir    -> "menhir"
     , mkVar "OCAMLLEX" "ocamllex"
     , mkVar "OCAMLCFLAGS" ""
     , mkRule "all" []
@@ -140,7 +142,7 @@ makefile opts = vcat
                                  mkFile withLang "Abs" "*" opts,
                                  mkFile withLang "Test" "" opts,
                                  utilFile opts,
-                                 "Makefile*" ]]
+                                 basename ]]
     ]
   where dir = let d = codeDir opts in if null d then "" else d ++ [pathSeparator]
 
@@ -153,4 +155,3 @@ utilM = unlines
      "(* this should really be in the parser, but ocamlyacc won't put it in the .mli *)",
      "exception Parse_error of Lexing.position * Lexing.position"
     ]
-

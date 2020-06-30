@@ -14,7 +14,7 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA
 -}
 
 {-
@@ -82,10 +82,9 @@ cf2cabs cf = CAbs {
   defineds   = defs
   }
  where
-  (pos,base) = partition (isPositionCat cf) $ fst (unzip (tokenPragmas cf))
+  (pos,  toks) = partition (isPositionCat cf) $ map fst $ tokenPragmas cf
   (lists,cats) = partition isList $ allCatsNorm cf
-  toks = map (show.normCat) base
-  testRule (Rule f c _)
+  testRule (Rule f c _ _)
    | isList c  = Nothing
    | f == "_"  = Nothing
    | otherwise = Just f
@@ -93,7 +92,7 @@ cf2cabs cf = CAbs {
     (identCat c,[(f, classVars (map (status . identCat) cs)) | (f,cs) <- fcs])
   posdata =
     [("Visitable",  -- to give superclass
-     [(show c,[("String",False,"string_"),("Integer",False,"integer_")])]) | c<-pos]
+     [(c,[("String",False,"string_"),("Integer",False,"integer_")])]) | c<-pos]
   status cat = (cat, notElem cat (map fst basetypes ++ toks))
   defs = [f | FunDef f _ _ <- cfgPragmas cf]
 

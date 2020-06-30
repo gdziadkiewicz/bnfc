@@ -14,7 +14,7 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA
 -}
 
 -- Multi-view grammars (undocumented)
@@ -22,8 +22,8 @@
 LGr.      LGrammar ::= [LDef] ;
 
 DefAll.   LDef ::= Def ;
-DefSome.  LDef ::= [Ident] ":" Def ;
-LDefView. LDef ::= "views" [Ident] ;
+DefSome.  LDef ::= [Identifier] ":" Def ;
+LDefView. LDef ::= "views" [Identifier] ;
 
 -- separator LDef ";" ;
 [].       [LDef] ::= ;
@@ -32,7 +32,7 @@ LDefView. LDef ::= "views" [Ident] ;
 -- extra semicolons allowed
 _.        [LDef] ::= ";" [LDef] ;
 
-separator nonempty Ident "," ;
+separator nonempty Identifier "," ;
 
 -- A Grammar is a sequence of definitions
 
@@ -56,7 +56,7 @@ terminator Item "" ;
 
 -- Categories (non-terminals)
 ListCat  . Cat ::= "[" Cat "]" ;
-IdCat    . Cat ::= Ident ;
+IdCat    . Cat ::= Identifier ;
 
 -- Labels with or without profiles
 LabNoP   . Label ::= LabelId ;
@@ -67,7 +67,7 @@ LabPF    . Label ::= LabelId LabelId [ProfItem] ;
 LabF     . Label ::= LabelId LabelId ;
 
 -- functional labels
-Id       . LabelId ::= Ident               ;  -- AST constructor
+Id       . LabelId ::= Identifier          ;  -- AST constructor
 Wild     . LabelId ::= "_"                 ;  -- No AST constructor (embedding)
 ListE    . LabelId ::= "[" "]"             ;  -- Empty list
 ListCons . LabelId ::= "(" ":" ")"         ;  -- Cons
@@ -86,17 +86,17 @@ terminator nonempty ProfItem "" ;
 Comment  .  Def ::= "comment"  String                     ; -- Line comment
 Comments .  Def ::= "comment"  String String              ; -- Block comment
 Internal .  Def ::= "internal" Label "." Cat "::=" [Item] ; -- No parsing, AST and printing only
-Token.      Def ::=            "token" Ident Reg          ; -- Lexer token
-PosToken.   Def ::= "position" "token" Ident Reg          ; -- Lexer token with position info
-Entryp.     Def ::= "entrypoints" [Ident]                 ; -- Names of parsers
+Token.      Def ::=            "token" Identifier Reg     ; -- Lexer token
+PosToken.   Def ::= "position" "token" Identifier Reg     ; -- Lexer token with position info
+Entryp.     Def ::= "entrypoints" [Identifier]            ; -- Names of parsers
 Separator.  Def ::= "separator"   MinimumSize Cat String  ; -- List
 Terminator. Def ::= "terminator"  MinimumSize Cat String  ; -- List
 Delimiters. Def ::= "delimiters"  Cat String String Separation MinimumSize;
-Coercions.  Def ::= "coercions"   Ident Integer           ; -- Embeddings and parenthesized exprs.
-Rules.      Def ::= "rules"       Ident "::=" [RHS]       ; -- Automatically generated lables (e.g. enums)
-Function.   Def ::= "define"      Ident [Arg] "=" Exp     ;
+Coercions.  Def ::= "coercions"   Identifier Integer      ; -- Embeddings and parenthesized exprs.
+Rules.      Def ::= "rules"       Identifier "::=" [RHS]  ; -- Automatically generated lables (e.g. enums)
+Function.   Def ::= "define"      Identifier [Arg] "=" Exp;
 
-Arg.        Arg ::= Ident ;
+Arg.        Arg ::= Identifier ;
 separator   Arg "" ;
 
 -- Lists
@@ -113,8 +113,8 @@ separator nonempty String "," ;
 
 -- Expressions
 Cons.       Exp  ::= Exp1 ":" Exp ;
-App.        Exp1 ::= Ident [Exp2] ;
-Var.        Exp2 ::= Ident ;
+App.        Exp1 ::= Identifier [Exp2] ;
+Var.        Exp2 ::= Identifier ;
 LitInt.     Exp2 ::= Integer ;
 LitChar.    Exp2 ::= Char ;
 LitString.  Exp2 ::= String ;
@@ -134,27 +134,34 @@ MNonempty.  MinimumSize ::= "nonempty" ;
 MEmpty.     MinimumSize ::=  ;
 
 -- Regular expressions
-RSeq.    Reg2 ::= Reg2 Reg3     ;  -- left-associative
-RAlt.    Reg1 ::= Reg1 "|" Reg2 ;  -- left-associative
-RMinus.  Reg1 ::= Reg2 "-" Reg2 ;  -- non-associative
 
-RStar.   Reg3 ::= Reg3 "*" ;
-RPlus.   Reg3 ::= Reg3 "+" ;
-ROpt.    Reg3 ::= Reg3 "?" ;
+RAlt.     Reg  ::= Reg  "|" Reg1  ;  -- left-associative
 
-REps.    Reg3 ::= "eps" ;
+RMinus.   Reg1 ::= Reg1 "-" Reg2  ;  -- left-associative
 
-RChar.   Reg3 ::= Char ;           -- single character
-RAlts.   Reg3 ::= "[" String "]" ; -- list of alternative characters
-RSeqs.   Reg3 ::= "{" String "}" ; -- character sequence
+RSeq.     Reg2 ::= Reg2 Reg3      ;  -- left-associative
 
-RDigit.  Reg3 ::= "digit"  ;
-RLetter. Reg3 ::= "letter" ;
-RUpper.  Reg3 ::= "upper"  ;
-RLower.  Reg3 ::= "lower"  ;
-RAny.    Reg3 ::= "char"   ;
+RStar.    Reg3 ::= Reg3 "*"       ;
+RPlus.    Reg3 ::= Reg3 "+"       ;
+ROpt.     Reg3 ::= Reg3 "?"       ;
+
+REps.     Reg3 ::= "eps"          ;  -- empty string, same as {""}
+
+RChar.    Reg3 ::= Char           ;  -- single character
+RAlts.    Reg3 ::= "[" String "]" ;  -- list of alternative characters
+RSeqs.    Reg3 ::= "{" String "}" ;  -- character sequence
+
+RDigit.   Reg3 ::= "digit"        ;
+RLetter.  Reg3 ::= "letter"       ;
+RUpper.   Reg3 ::= "upper"        ;
+RLower.   Reg3 ::= "lower"        ;
+RAny.     Reg3 ::= "char"         ;
 
 coercions Reg 3;
+
+-- LBNF identifiers
+
+token Identifier letter (letter | digit | '_')* ;
 
 -- Comments in BNF source
 comment "--"      ;

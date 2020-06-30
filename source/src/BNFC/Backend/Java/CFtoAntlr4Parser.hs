@@ -15,7 +15,7 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA
 -}
 
 {-
@@ -39,27 +39,53 @@
 -}
 module BNFC.Backend.Java.CFtoAntlr4Parser ( cf2AntlrParse ) where
 
-import Data.List
+import Data.List     ( intercalate )
+import Data.Maybe
+
 import BNFC.CF
+import BNFC.Options ( RecordPositions(..) )
+import BNFC.Utils   ( (+++), (+.+), applyWhen )
+
 import BNFC.Backend.Java.Utils
 import BNFC.Backend.Common.NamedVariables
-import BNFC.Options (RecordPositions(..))
-import BNFC.Utils ( (+++), (+.+))
+import BNFC.Backend.Java.CFtoCup15 ( definedRules )
 
 -- Type declarations
-type Rules       = [(NonTerminal,[(Pattern, Fun, Action)])]
+
+-- | A definition of a non-terminal by all its rhss,
+--   together with parse actions.
+data PDef = PDef
+  { _pdNT   :: Maybe String
+      -- ^ If given, the name of the lhss.  Usually computed from 'pdCat'.
+  , _pdCat  :: Cat
+      -- ^ The category to parse.
+  , _pdAlts :: [(Pattern, Action, Maybe Fun)]
+      -- ^ The possible rhss with actions.  If 'null', skip this 'PDef'.
+      --   Where 'Nothing', skip ANTLR rule label.
+  }
+type Rules       = [PDef]
 type Pattern     = String
 type Action      = String
 type MetaVar     = (String, Cat)
 
 -- | Creates the ANTLR parser grammar for this CF.
 --The environment comes from CFtoAntlr4Lexer
-cf2AntlrParse :: String -> String -> CF -> RecordPositions -> SymEnv -> String
-cf2AntlrParse packageBase packageAbsyn cf _ env = unlines
-    [ header
+cf2AntlrParse :: String -> String -> CF -> RecordPositions -> KeywordEnv -> String
+cf2AntlrParse packageBase packageAbsyn cf _ env = unlines $ concat
+  [ [ header
     , tokens
-    , prRules packageAbsyn (rulesForAntlr4 packageAbsyn cf env)
+    , "@members {"
     ]
+  , map ("  " ++) $ definedRules packageAbsyn cf
+  , [ "}"
+    , ""
+    -- Generate start rules [#272]
+    -- _X returns [ dX result ] : x=X EOF { $result = $x.result; }
+    , prRules packageAbsyn $ map entrypoint $ allEntryPoints cf
+    -- Generate regular rules
+    , prRules packageAbsyn $ rulesForAntlr4 packageAbsyn cf env
+    ]
+  ]
   where
     header :: String
     header = unlines
@@ -74,9 +100,22 @@ cf2AntlrParse packageBase packageAbsyn cf _ env = unlines
         ]
     identifier = getLastInPackage packageBase
 
+-- | Generate start rule to help ANTLR.
+--
+--   @start_X returns [ X result ] : x=X EOF { $result = $x.result; } # Start_X@
+--
+entrypoint :: Cat -> PDef
+entrypoint cat =
+  PDef (Just nt) cat [(pat, act, fun)]
+  where
+  nt  = firstLowerCase $ startSymbol $ identCat cat
+  pat = "x=" ++ catToNT cat +++ "EOF"
+  act = "$result = $x.result;"
+  fun = Nothing -- No ANTLR Rule label, ("Start_" ++ identCat cat) conflicts with lhs.
+
 --The following functions are a (relatively) straightforward translation
 --of the ones in CFtoHappy.hs
-rulesForAntlr4 :: String -> CF -> SymEnv -> Rules
+rulesForAntlr4 :: String -> CF -> KeywordEnv -> Rules
 rulesForAntlr4 packageAbsyn cf env = map mkOne getrules
   where
     getrules          = ruleGroups cf
@@ -84,18 +123,24 @@ rulesForAntlr4 packageAbsyn cf env = map mkOne getrules
 
 -- | For every non-terminal, we construct a set of rules. A rule is a sequence of
 -- terminals and non-terminals, and an action to be performed.
-constructRule :: String -> CF -> SymEnv -> [Rule] -> NonTerminal -> (NonTerminal,[(Pattern, Fun, Action)])
+constructRule :: String -> CF -> KeywordEnv -> [Rule] -> NonTerminal -> PDef
 constructRule packageAbsyn cf env rules nt =
-    (nt, [ (p , funRule r , generateAction packageAbsyn nt (funRule r) (revM b m) b)
-          | (index ,r0) <- zip [1..(length rules)] rules,
-          let (b,r) = if isConsFun (funRule r0) && elem (valCat r0) revs
-                          then (True, revSepListRule r0)
-                          else (False, r0)
-              (p,m) = generatePatterns index env r])
- where
-   revM False = id
-   revM True  = reverse
-   revs       = cfgReversibleCats cf
+  PDef Nothing nt $
+    [ ( p
+      , generateAction packageAbsyn nt (funRule r) m b
+      , Nothing  -- labels not needed for BNFC-generated AST parser
+      -- , Just label
+      -- -- Did not work:
+      -- -- , if firstLowerCase (getLabelName label)
+      -- --   == getRuleName (firstLowerCase $ identCat nt) then Nothing else Just label
+      )
+    | (index, r0) <- zip [1..] rules
+    , let b      = isConsFun (funRule r0) && elem (valCat r0) (cfgReversibleCats cf)
+    , let r      = applyWhen b revSepListRule r0
+    , let (p,m0) = generatePatterns index env r
+    , let m      = applyWhen b reverse m0
+    -- , let label  = funRule r
+    ]
 
 -- Generates a string containing the semantic action.
 generateAction :: String -> NonTerminal -> Fun -> [MetaVar]
@@ -109,7 +154,7 @@ generateAction packageAbsyn nt f ms rev
     | isConsFun f = "$result = " ++ p_2 ++ "; "
                            ++ "$result." ++ add ++ "(" ++ p_1 ++ ");"
     | isCoercion f = "$result = " ++  p_1 ++ ";"
-    | isDefinedRule f = "$result = parser." ++ f ++ "_"
+    | isDefinedRule f = "$result = " ++ f ++ "_"
                         ++ "(" ++ intercalate "," (map resultvalue ms) ++ ");"
     | otherwise = "$result = new " ++ c
                   ++ "(" ++ intercalate "," (map resultvalue ms) ++ ");"
@@ -136,67 +181,67 @@ generateAction packageAbsyn nt f ms rev
 
 -- | Generate patterns and a set of metavariables indicating
 -- where in the pattern the non-terminal
--- >>> generatePatterns 2 [] (Rule "myfun" (Cat "A") [])
+-- >>> generatePatterns 2 [] $ Rule "myfun" (Cat "A") [] Parsable
 -- (" /* empty */ ",[])
--- >>> generatePatterns 3 [("def", "_SYMB_1")] (Rule "myfun" (Cat "A") [Right "def", Left (Cat "B")])
--- ("_SYMB_1 p_3_2=b ",[("p_3_2",B)])
-generatePatterns :: Int -> SymEnv -> Rule -> (Pattern,[MetaVar])
-generatePatterns ind env r = case rhsRule r of
-    []  -> (" /* empty */ ",[])
-    its -> (mkIt 1 its, metas its)
- where
-    mkIt _ [] = []
-    mkIt n (i:is) = case i of
-        Left c -> "p_" ++show ind++"_"++ show (n :: Int) ++ "="++ c'
-            +++ mkIt (n+1) is
-          where
-              c' = case c of
-                  TokenCat "Ident"   -> "IDENT"
-                  TokenCat "Integer" -> "INTEGER"
-                  TokenCat "Char"    -> "CHAR"
-                  TokenCat "Double"  -> "DOUBLE"
-                  TokenCat "String"  -> "STRING"
-                  _                  -> if isTokenCat c
-                                          then identCat c
-                                          else firstLowerCase
-                                                (getRuleName (identCat c))
-        Right s -> case lookup s env of
-            (Just x) -> x +++ mkIt (n+1) is
-            (Nothing) -> mkIt n is
-    metas its = [("p_" ++ show ind ++"_"++ show i, category)
-                    | (i,Left category) <- zip [1 :: Int ..] its]
+-- >>> generatePatterns 3 [("def", "_SYMB_1")] $ Rule "myfun" (Cat "A") [Right "def", Left (Cat "B")] Parsable
+-- ("_SYMB_1 p_3_2=b",[("p_3_2",B)])
+generatePatterns :: Int -> KeywordEnv -> Rule -> (Pattern,[MetaVar])
+generatePatterns ind env r =
+  case rhsRule r of
+    []  -> (" /* empty */ ", [])
+    its -> ( unwords $ mapMaybe (uncurry mkIt) nits
+           , [ (var i, cat) | (i, Left cat) <- nits ]
+           )
+      where
+      nits   = zip [1 :: Int ..] its
+      var i  = "p_" ++ show ind ++"_"++ show i   -- TODO: is ind needed for ANTLR?
+      mkIt i = \case
+        Left  c -> Just $ var i ++ "=" ++ catToNT c
+        Right s -> lookup s env
+
+catToNT :: Cat -> String
+catToNT = \case
+  TokenCat "Ident"   -> "IDENT"
+  TokenCat "Integer" -> "INTEGER"
+  TokenCat "Char"    -> "CHAR"
+  TokenCat "Double"  -> "DOUBLE"
+  TokenCat "String"  -> "STRING"
+  c | isTokenCat c   -> identCat c
+    | otherwise      -> firstLowerCase $ getRuleName $ identCat c
 
 -- | Puts together the pattern and actions and returns a string containing all
 -- the rules.
 prRules :: String -> Rules -> String
-prRules _ [] = []
-prRules packabs ((_, []):rs) = prRules packabs rs
-prRules packabs ((nt,(p, fun, a):ls):rs) =
-    preamble ++ ";\n" ++ prRules packabs rs
-  where
-    preamble          = unwords [ nt'
-                        , "returns"
-                        , "["
-                        , packabs+.+normcat
-                        , "result"
-                        , "]"
-                        , ":"
-                        , p
-                        , "{"
-                        , a
-                        , "}"
-                        , "#"
-                        , antlrRuleLabel fun
-                        , '\n' : pr ls
-                        ]
-    alternative (p',fun',a')
-                      = unwords ["  |", p', "{", a' , "}", "#"
-                        , antlrRuleLabel fun']
-    catid             = identCat nt
-    normcat           = identCat (normCat nt)
-    nt'               = getRuleName $ firstLowerCase catid
-    pr []             = []
-    pr (k:ls) = unlines [alternative k] ++ pr ls
+prRules packabs = concatMap $ \case
+
+  -- No rules: skip.
+  PDef _mlhs _nt []         -> ""
+
+  -- At least one rule: print!
+  PDef mlhs nt (rhs : rhss) -> unlines $ concat
+
+    -- The definition header: lhs and type.
+    [ [ unwords [ fromMaybe nt' mlhs
+                , "returns" , "[" , packabs+.+normcat , "result" , "]"
+                ]
+      ]
+    -- The first rhs.
+    , alternative "  :" rhs
+    -- The other rhss.
+    , concatMap (alternative "  |") rhss
+    -- The definition footer.
+    , [ "  ;" ]
+    ]
+    where
+    alternative sep (p, a, label) = concat
+      [ [ unwords [ sep , p ] ]
+      , [ unwords [ "    {" , a , "}" ] ]
+      , [ unwords [ "    #" , antlrRuleLabel l ] | Just l <- [label] ]
+      ]
+    catid              = identCat nt
+    normcat            = identCat (normCat nt)
+    nt'                = getRuleName $ firstLowerCase catid
+    antlrRuleLabel :: Fun -> String
     antlrRuleLabel fnc
       | isNilFun fnc   = catid ++ "_Empty"
       | isOneFun fnc   = catid ++ "_AppendLast"

@@ -14,31 +14,24 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA
 -}
 
 
 module BNFC.MultiView where
 
-import System.Directory	( doesFileExist, renameFile )
+import Data.Maybe
 
-import qualified BNFC.CF as CF
-import BNFC.Utils
 import ParBNF
 import PrintBNF
-import Data.List(nub,partition)
 import AbsBNF
--- import LexBNF
-import ErrM
-import Data.Char
-import BNFC.TypeChecker
 
 preprocessMCF :: FilePath -> IO ([FilePath],String)
 preprocessMCF f = do
   s  <- readFile f
   gr <- case pLGrammar $ myLexer s of
-    Ok g  -> return g
-    Bad s -> error s
+    Right g  -> return g
+    Left s -> error s
   let name = takeWhile (/='.') f
   let grs = extract name gr
   let entryp = entrypoint gr
@@ -47,31 +40,28 @@ preprocessMCF f = do
 
 extract :: String -> LGrammar -> [(FilePath, Grammar)]
 extract name (LGr ldefs) =
-  [(file lang,Grammar [unldef ldef | ldef <- ldefs, isFor lang ldef]) |
+  [(file lang,Grammar $ mapMaybe (getDef lang) ldefs) |
       lang <- views]
  where
-   views = [lang | LDefView langs <- ldefs, Ident lang <- langs]
-   isFor lang ldef = case ldef of
-     DefAll _ -> True
-     DefSome ids _ -> elem (Ident lang) ids
-     _ -> False
-   unldef ldef = case ldef of
-     DefAll d -> d
-     DefSome _ d -> d
+   views = [lang | LDefView langs <- ldefs, Identifier lang <- langs]
+   getDef lang ldef = case ldef of
+     DefAll d -> Just d
+     DefSome ids d | elem (Identifier lang) ids -> Just d
+     _ -> Nothing
    file lang = name ++ "_" ++ lang ++ ".cf"
 
 --- the entrypoint is the same for all languages - could be different
 
 entrypoint :: LGrammar -> String
 entrypoint (LGr rs0) = head $
-  [c | Entryp (Ident c:_) <- rs] ++
-  [c | Rule _ (IdCat (Ident c)) _ <- rs]
+  [c | Entryp (Identifier c:_) <- rs] ++
+  [c | Rule _ (IdCat (Identifier c)) _ <- rs]
  where
-   rs = concatMap getR rs0
+   rs = mapMaybe getR rs0
    getR d = case d of
-     DefAll d -> [d]
-     DefSome _ d -> [d]
-     _ -> [] --- LDefView
+     DefAll d -> Just d
+     DefSome _ d -> Just d
+     _LDefView -> Nothing
 
 writeCF :: (FilePath, Grammar) -> IO ()
 writeCF (file,gr) = do
@@ -95,20 +85,19 @@ mkMakefileMulti xx file files = do
   let content = makefile xx abs cncs
   writeFile "Makefile" content
 
-makefile xx abs cncs = unlines $
+makefile _ abs cncs = unlines $
   "all:" :
   ["\tmake -f Makefile_" ++ cnc | cnc <- cncs] ++
   ["\tghc --make -o TestTrans" ++ abs ++ " TestTrans" ++ abs,
    ""
   ]
 
-testfile cat xx abs cncs = unlines $
+testfile cat _ abs cncs = unlines $
   ["module Main where"] ++
   ["import qualified Lex" ++ cnc | cnc <- cncs] ++
   ["import qualified Par" ++ cnc | cnc <- cncs] ++
   ["import qualified Print" ++ cnc | cnc <- cncs] ++
   ["import Abs" ++ abs,
-   "import ErrM",
    "import System.Environment (getArgs)",
    "",
    "main :: IO ()",
@@ -116,8 +105,8 @@ testfile cat xx abs cncs = unlines $
    "  i:o:f:_ <- getArgs",
    "  s <- readFile f",
    "  case parse i s of",
-   "    Ok t -> putStrLn $ prin o t",
-   "    Bad s -> error s",
+   "    Right t -> putStrLn $ prin o t",
+   "    Left  s -> error s",
    "",
    "parse i = case i of"
   ] ++

@@ -16,7 +16,7 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA
 -}
 
 
@@ -26,20 +26,20 @@ module BNFC.Backend.OCaml.CFtoOCamlLex (cf2ocamllex) where
 
 import Prelude'
 
-import Control.Arrow ((&&&))
-import Data.List
-import Data.Char
+import qualified Data.List as List
 import Text.PrettyPrint hiding (render)
 import qualified Text.PrettyPrint as PP
 
-import BNFC.CF
 import AbsBNF
+import BNFC.CF
 import BNFC.Backend.OCaml.CFtoOCamlYacc (terminal)
-import BNFC.Utils ((+++), cstring, cchar)
+import BNFC.Backend.OCaml.OCamlUtil (mkEsc, ocamlTokenName)
+import BNFC.Lexing (mkRegMultilineComment)
+import BNFC.Utils (cstring, unless)
 
 cf2ocamllex :: String -> String -> CF -> String
 cf2ocamllex _ parserMod cf =
-  unlines $ intercalate [""] [
+  unlines $ List.intercalate [""] [
     header parserMod cf,
     definitions cf,
     [PP.render (rules cf)]
@@ -59,6 +59,8 @@ header parserMod cf = [
   "      '\\\\'::c::cs when List.mem c ['\\\"'; '\\\\'; '\\\''] -> c :: unesc cs",
   "    | '\\\\'::'n'::cs  -> '\\n' :: unesc cs",
   "    | '\\\\'::'t'::cs  -> '\\t' :: unesc cs",
+  "    | '\\\\'::'r'::cs  -> '\\r' :: unesc cs",
+  -- "    | '\\\\'::'f'::cs  -> '\\f' :: unesc cs",  -- \f not supported by ocaml
   "    | '\\\"'::[]    -> []",
   "    | c::cs      -> c :: unesc cs",
   "    | _         -> []",
@@ -84,49 +86,45 @@ header parserMod cf = [
 
 -- | set up hashtables for reserved symbols and words
 hashtables :: CF -> String
-hashtables cf = ht "symbol_table" (cfgSymbols cf )  ++ "\n" ++
-                ht "resword_table" (reservedWords cf)
-    where ht _ syms | null syms = ""
-          ht table syms = unlines [
-                "let" +++ table +++ "= Hashtbl.create " ++ show (length syms),
-                "let _ = List.iter (fun (kwd, tok) -> Hashtbl.add" +++ table
-                         +++ "kwd tok)",
-                "                  [" ++ concat (intersperse ";" keyvals) ++ "]"
-            ]
-            where keyvals = map (\(x,y) -> "(" ++ x ++ ", " ++ y ++ ")")
-                          (zip (map show syms) (map (terminal cf) syms))
-
+hashtables cf = unlines . concat $
+  [ ht "symbol_table"  $ cfgSymbols cf
+  , ht "resword_table" $ reservedWords cf
+  ]
+  where
+  ht table syms = unless (null syms) $
+    [ unwords [ "let", table, "= Hashtbl.create", show (length syms)                  ]
+    , unwords [ "let _ = List.iter (fun (kwd, tok) -> Hashtbl.add", table, "kwd tok)" ]
+    , concat  [ "                  [", concat (List.intersperse ";" keyvals), "]"     ]
+    ]
+    where
+    keyvals = map (\ s -> concat [ "(", mkEsc s, ", ", terminal cf s, ")" ]) syms
 
 
 definitions :: CF -> [String]
-definitions cf = concat [
-        cMacros,
-        rMacros cf,
-        uMacros cf
-    ]
-
+definitions cf = concat $
+  [ cMacros
+  , rMacros cf
+  , uMacros cf
+  ]
 
 cMacros :: [String]
 cMacros = [
   "let l = ['a'-'z' 'A'-'Z' '\\192' - '\\255'] # ['\\215' '\\247']    (*  isolatin1 letter FIXME *)",
   "let c = ['A'-'Z' '\\192'-'\\221'] # ['\\215']    (*  capital isolatin1 letter FIXME *)",
   "let s = ['a'-'z' '\\222'-'\\255'] # ['\\247']    (*  small isolatin1 letter FIXME *)",
-  "let d = ['0'-'9']                (*  digit *)",
-  "let i = l | d | ['_' '\\'']          (*  identifier character *)",
-  "let u = ['\\000'-'\\255']           (* universal: any character *)"
+  "let d = ['0'-'9']                             (*  digit *)",
+  "let i = l | d | ['_' '\\'']                    (*  identifier character *)",
+  "let u = _                                     (* universal: any character *)"
   ]
 
 rMacros :: CF -> [String]
-rMacros cf =
-  let symbs = cfgSymbols cf
-  in
-  (if null symbs then [] else [
-   "let rsyms =    (* reserved words consisting of special symbols *)",
-   "            " ++ unwords (intersperse "|" (map mkEsc symbs))
-   ])
- where
-  mkEsc s = "\"" ++ concat (map f s) ++ "\""
-  f x = if x `elem` ['"','\\'] then  "\\" ++ [x] else [x]
+rMacros cf
+  | null symbs = []
+  | otherwise  =
+      [ "let rsyms =    (* reserved words consisting of special symbols *)"
+      , "            " ++ unwords (List.intersperse "|" (map mkEsc symbs))
+      ]
+  where symbs = cfgSymbols cf
 
 -- user macros, derived from the user-defined tokens
 uMacros :: CF -> [String]
@@ -135,9 +133,8 @@ uMacros cf = ["let " ++ name ++ " = " ++ rep | (name, rep, _) <- userTokens cf]
 -- returns the tuple of (reg_name, reg_representation, token_name)
 userTokens :: CF -> [(String, String, String)]
 userTokens cf =
-  let regName = map toLower . show in
-  [(regName name, printRegOCaml reg, show name) | (name, reg) <- tokenPragmas cf]
-      
+  [ (ocamlTokenName name, printRegOCaml reg, name) | (name, reg) <- tokenPragmas cf ]
+
 
 
 -- | Make OCamlLex rule
@@ -167,25 +164,14 @@ mkRule entrypoint (r1:rn) = vcat
 mkRegexSingleLineComment :: String -> Doc
 mkRegexSingleLineComment s = cstring s <+> "(_ # '\\n')*"
 
--- | Create regex for multiline comments
+-- | Create regex for multiline comments.
 -- >>> mkRegexMultilineComment "<!--" "-->"
--- "<!--" ((u # ['-']) | '-' (u # ['-']) | "--" (u # ['>']))* '-'* "-->"
+-- "<!--" (u # '-')* '-' ((u # '-')+ '-')* '-' ((u # ['-''>']) (u # '-')* '-' ((u # '-')+ '-')* '-' | '-')* '>'
 --
 -- >>> mkRegexMultilineComment "\"'" "'\""
--- "\"'" ((u # ['\'']) | '\'' (u # ['"']))* '\''* "'\""
+-- "\"'" (u # '\'')* '\'' ((u # ['"''\'']) (u # '\'')* '\'' | '\'')* '"'
 mkRegexMultilineComment :: String -> String -> Doc
-mkRegexMultilineComment b e =
-  lit b
-  <+> parens ( hsep $ intersperse "|" subregexs ) <> "*"
-  <+> lit [head e] <> "*"
-  <+> lit e
-  where
-    lit :: String -> Doc
-    lit "" = empty
-    lit [c] = cchar c
-    lit s = cstring s
-    prefix = map (init &&& last) (drop 1 (inits e))
-    subregexs = [ lit ss <+> parens ("u #" <+> brackets (lit [s])) | (ss,s) <- prefix]
+mkRegexMultilineComment b e = text $ printRegOCaml $ mkRegMultilineComment b e
 
 -- | Uses the function from above to make a lexer rule from the CF grammar
 rules :: CF -> Doc
@@ -212,10 +198,10 @@ rules cf = mkRule "token" $
     , ( "d+ '.' d+ ('e' ('-')? d+)?"
       , "let f = lexeme lexbuf in TOK_Double (float_of_string f)" )
     -- strings
-    , ( "'\\\"' ((u # ['\\\"' '\\\\' '\\n']) | ('\\\\' ('\\\"' | '\\\\' | '\\\'' | 'n' | 't')))* '\\\"'"
+    , ( "'\\\"' ((u # ['\\\"' '\\\\' '\\n']) | ('\\\\' ('\\\"' | '\\\\' | '\\\'' | 'n' | 't' | 'r')))* '\\\"'"
       , "let s = lexeme lexbuf in TOK_String (unescapeInitTail s)" )
     -- chars
-    , ( "'\\'' ((u # ['\\\'' '\\\\']) | ('\\\\' ('\\\\' | '\\\'' | 'n' | 't'))) '\\\''"
+    , ( "'\\'' ((u # ['\\\'' '\\\\']) | ('\\\\' ('\\\\' | '\\\'' | 'n' | 't' | 'r'))) '\\\''"
       , "let s = lexeme lexbuf in TOK_Char s.[1]")
     -- spaces
     , ( "[' ' '\\t']", "token lexbuf")
@@ -276,8 +262,8 @@ instance Print Char where
 prPrec :: Int -> Int -> [String] -> [String]
 prPrec i j = if j<i then parenth else id
 
-instance Print Ident where
-  prt _ (Ident i) = [i]
+instance Print Identifier where
+  prt _ (Identifier i) = [i]
 
 instance Print Reg where
   prt i e = case e of
@@ -290,7 +276,8 @@ instance Print Reg where
    REps            -> prPrec i 3 (["\"\""])  -- special construct for eps in ocamllex?
    RChar c         -> prPrec i 3 (concat [prt 0 c])
    RAlts str       -> prPrec i 3 (concat [["["], [concatMap show str], ["]"]])
-   RSeqs str       -> prPrec i 2 (concat (map (prt 0) str))
+   RSeqs str       -> [ show str ]
+   -- RSeqs str       -> prPrec i 2 (concat (map (prt 0) str))
    RDigit          -> prPrec i 3 (concat [["d"]])
    RLetter         -> prPrec i 3 (concat [["l"]])
    RUpper          -> prPrec i 3 (concat [["c"]])

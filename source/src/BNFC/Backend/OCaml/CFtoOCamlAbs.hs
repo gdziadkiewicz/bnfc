@@ -14,7 +14,7 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    Foundation, 51 Franklin Street, Fifth Floor, Boston, MA 02110-1335, USA
 -}
 
 -- based on BNFC Haskell backend
@@ -62,11 +62,11 @@ prRule (fun,cats) = fun +++ "of" +++ render (mkTupleType cats)
 mkTupleType :: [Cat] -> Doc
 mkTupleType = hsep . intersperse (char '*') . map (text . fixType)
 
-prSpecialData :: CF -> Cat -> String
-prSpecialData cf cat = fixType cat +++ "=" +++ show cat +++ "of" +++ contentSpec cf cat
+prSpecialData :: CF -> TokenCat -> String
+prSpecialData cf cat = fixType (TokenCat cat) +++ "=" +++ cat +++ "of" +++ contentSpec cf cat
 
 --  unwords ["newtype",cat,"=",cat,contentSpec cf cat,"deriving (Eq,Ord,Show)"]
 
-contentSpec :: CF -> Cat -> String
+contentSpec :: CF -> TokenCat -> String
 contentSpec cf cat = -- if isPositionCat cf cat then "((Int,Int),String)" else "String"
     if isPositionCat cf cat then "((int * int) * string)" else "string"
