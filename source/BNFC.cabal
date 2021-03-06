@@ -206,6 +206,17 @@ library
     BNFC.Backend.OCaml.CFtoOCamlYacc
     BNFC.Backend.OCaml.CFtoOCamlLex
 
+    -- FSharp backend
+    BNFC.Backend.FSharp
+    BNFC.Backend.FSharp.FSharpUtil
+    BNFC.Backend.FSharp.CFtoFSharpTest
+    BNFC.Backend.FSharp.CFtoFSharpShow
+    BNFC.Backend.FSharp.CFtoFSharpPrinter
+    BNFC.Backend.FSharp.CFtoFSharpTemplate
+    BNFC.Backend.FSharp.CFtoFSharpAbs
+    BNFC.Backend.FSharp.CFtoFsYacc
+    BNFC.Backend.FSharp.CFtoFsLex
+
     -- C backend
     BNFC.Backend.C
     BNFC.Backend.C.CFtoCPrinter

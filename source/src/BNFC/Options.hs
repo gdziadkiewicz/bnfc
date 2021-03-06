@@ -57,7 +57,7 @@ data Mode
 data Target = TargetC | TargetCpp | TargetCppNoStl
             | TargetHaskell | TargetHaskellGadt | TargetLatex
             | TargetJava | TargetOCaml | TargetPygments
-            | TargetCheck
+            | TargetCheck | TargetFSharp
   deriving (Eq, Bounded, Enum, Ord)
 
 -- | List of Haskell target.
@@ -73,6 +73,7 @@ instance Show Target where
   show TargetLatex        = "Latex"
   show TargetJava         = "Java"
   show TargetOCaml        = "OCaml"
+  show TargetFSharp       = "F#"
   show TargetPygments     = "Pygments"
   show TargetCheck        = "Check LBNF file"
 
