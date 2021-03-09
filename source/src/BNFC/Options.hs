@@ -289,6 +289,8 @@ targetOptions =
     "Output C++ code (without STL) for use with FLex and Bison"
   , Option "" ["ocaml"]         (NoArg (\o -> o {target = TargetOCaml}))
     "Output OCaml code for use with ocamllex and ocamlyacc"
+  , Option "" ["fsharp"]        (NoArg (\o -> o {target = TargetFSharp}))
+    "Output F# code for use with fslex and fsyacc"
   , Option "" ["ocaml-menhir"]  (NoArg (\ o -> o{ target = TargetOCaml, ocamlParser = Menhir }))
     "Output OCaml code for use with ocamllex and menhir (short for --ocaml --menhir)"
   , Option "" ["pygments"]      (NoArg (\o -> o {target = TargetPygments}))
@@ -500,6 +502,7 @@ instance Maintained Target where
     TargetLatex       -> True
     TargetJava        -> True
     TargetOCaml       -> True
+    TargetFSharp      -> True
     TargetPygments    -> True
     TargetCheck       -> True
 
@@ -615,6 +618,7 @@ translateOldOptions = mapM $ \ o -> do
     , ("-cpp_no_stl"   , "--cpp-nostl")
     , ("-csharp"       , "--csharp")
     , ("-ocaml"        , "--ocaml")
+    , ("-fsharp"       , "--fsharp")
     , ("-haskell"      , "--haskell")
     , ("-prof"         , "--profile")
     , ("-gadt"         , "--haskell-gadt")

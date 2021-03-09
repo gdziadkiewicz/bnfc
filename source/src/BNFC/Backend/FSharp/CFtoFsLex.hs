@@ -11,8 +11,8 @@ import qualified Text.PrettyPrint as PP
 import BNFC.Abs
 import BNFC.CF
 import BNFC.Backend.Common (asciiKeywords, unicodeAndSymbols)
-import BNFC.Backend.OCaml.CFtoOCamlYacc (terminal)
-import BNFC.Backend.OCaml.OCamlUtil (mkEsc, ocamlTokenName)
+import BNFC.Backend.FSharp.CFtoFsYacc (terminal)
+import BNFC.Backend.FSharp.FSharpUtil (mkEsc, ocamlTokenName)
 import BNFC.Lexing (mkRegMultilineComment)
 import BNFC.Utils (cstring, unless)
 

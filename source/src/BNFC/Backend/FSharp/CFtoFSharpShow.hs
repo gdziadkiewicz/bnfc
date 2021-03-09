@@ -8,7 +8,7 @@ import Data.Maybe (fromJust)
 
 import BNFC.CF
 import BNFC.Utils
-import BNFC.Backend.OCaml.OCamlUtil
+import BNFC.Backend.FSharp.FSharpUtil
 
 cf2show :: String -> ModuleName -> CF -> String
 cf2show _name absMod cf = unlines
