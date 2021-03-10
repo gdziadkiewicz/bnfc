@@ -88,3 +88,9 @@ mkEsc :: String -> String
 mkEsc s = "\"" ++ concatMap f s ++ "\""
   where
   f x = if x `elem` ['"','\\'] then "\\" ++ [x] else [x]
+
+fsharpTab:: String
+fsharpTab = "    "
+indent :: Int -> String -> String
+indent n s =
+    concat (replicate n fsharpTab) ++ s
